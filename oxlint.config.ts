@@ -1,0 +1,78 @@
+import { defineConfig } from 'oxlint'
+
+export default defineConfig({
+  categories: {
+    correctness: 'error',
+    perf: 'error',
+    style: 'error',
+    suspicious: 'error',
+  },
+  env: {
+    browser: true,
+    builtin: true,
+    commonjs: true,
+    node: true,
+    'shared-node-browser': true,
+  },
+  options: { typeAware: true, typeCheck: true },
+  overrides: [
+    {
+      files: ['**/use-file-upload.ts'],
+      rules: {
+        'react-hooks/exhaustive-deps': 'off',
+      },
+    },
+  ],
+  plugins: ['typescript', 'react', 'unicorn', 'import'],
+  rules: {
+    complexity: ['error', 15],
+    'consistent-type-specifier-style': ['error', 'prefer-inline'],
+    'default-case': 'error',
+    'exports-last': 'off',
+    'filename-case': [
+      'error',
+      {
+        cases: {
+          kebabCase: true,
+        },
+      },
+    ],
+    'function-component-definition': 'off', // Conflict with func-style
+    'group-exports': 'off',
+    'id-length': ['error', { exceptions: ['v', 'x', '$'] }],
+    'jsx-max-depth': 'off',
+    'jsx-props-no-spreading': 'off',
+    'max-nested-calls': 'off',
+    'max-statements': 'off',
+    'no-array-for-each': 'error',
+    'no-console': 'error',
+    'no-deprecated': 'error',
+    'no-empty': 'error',
+    'no-empty-function': 'error',
+    'no-explicit-any': 'error',
+    'no-magic-numbers': 'off',
+    'no-named-export': 'off',
+    'no-namespace': 'off',
+    'no-negated-condition': 'error',
+    'no-nodejs-modules': 'off',
+    'no-non-null-assertion': 'error',
+    'no-null': 'off',
+    'no-ternary': 'off',
+    'no-unassigned-import': 'off',
+    'no-underscore-dangle': 'off',
+    'no-unneeded-ternary': 'off',
+    'no-unsafe-type-assertion': 'off',
+    'no-unused-expressions': 'error',
+    'no-unused-vars': 'error',
+    'one-var': 'off',
+    'prefer-default-export': 'off',
+    'prefer-modern-math-apis': 'error',
+    'prefer-number-properties': 'error',
+    'prefer-string-replace-all': 'error',
+    'react-compiler': 'error',
+    'react-in-jsx-scope': 'off',
+    'react/jsx-no-constructed-context-values': 'off',
+    'sort-imports': 'off',
+    'style-prop-object': 'off',
+  },
+})

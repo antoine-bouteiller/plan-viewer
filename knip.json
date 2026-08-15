@@ -1,0 +1,6 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": ["src/app/frontend.tsx"],
+  "ignore": ["fixtures/**"],
+  "ignoreDependencies": ["@commitlint/cli", "bun-plugin-tailwind", "lefthook", "mermaid"]
+}

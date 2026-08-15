@@ -1,0 +1,54 @@
+import { useCallback, useEffect, useState } from 'react'
+
+interface UrlState {
+  project?: string
+  wt?: string
+  tab?: string
+  doc?: string
+}
+
+const KEYS = ['project', 'wt', 'tab', 'doc'] as const
+
+const read = (): UrlState => {
+  const params = new URLSearchParams(location.search)
+  const state: UrlState = {}
+  for (const key of KEYS) {
+    const value = params.get(key)
+    if (value) {
+      state[key] = value
+    }
+  }
+  return state
+}
+
+const useUrlState = () => {
+  const [state, setState] = useState<UrlState>(read)
+  const update = useCallback(
+    (patch: UrlState) => {
+      setState((current) => {
+        const next = { ...current, ...patch }
+        const params = new URLSearchParams()
+        let query = ''
+        for (const key of KEYS) {
+          if (next[key]) {
+            params.set(key, next[key])
+          }
+        }
+        query = params.toString()
+        history.replaceState(null, '', query ? `?${query}` : location.pathname)
+        return next
+      })
+    },
+    [setState]
+  )
+
+  useEffect(() => {
+    const onPop = () => setState(read())
+    addEventListener('popstate', onPop)
+    return () => removeEventListener('popstate', onPop)
+  }, [])
+
+  return [state, update] as const
+}
+
+export { useUrlState }
