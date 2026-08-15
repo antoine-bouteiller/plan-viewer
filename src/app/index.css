@@ -205,8 +205,10 @@
 @layer components {
   .xref-chip {
     @apply inline-flex cursor-pointer items-baseline gap-[3px] rounded border px-1.5 align-baseline font-mono text-[0.85em]/[1.45] font-medium whitespace-nowrap;
-    border-color: color-mix(in srgb, var(--tone) 40%, transparent);
-    background: color-mix(in srgb, var(--tone) 10%, transparent);
+    /* One color-mix per rule: the bundler lifts only the first into its @supports block,
+       leaving any others stuck at the opaque var(--tone) fallback. */
+    border-color: var(--tone);
+    background-color: color-mix(in srgb, var(--tone) 10%, transparent);
     color: var(--tone);
   }
 
