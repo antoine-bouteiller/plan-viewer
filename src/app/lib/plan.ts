@@ -28,6 +28,7 @@ export interface DocNode {
 }
 
 export interface Docs {
+  project: string
   plans: DocNode[]
   specs: DocNode[]
 }

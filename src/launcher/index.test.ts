@@ -101,7 +101,7 @@ test(
       expect(first.created).toBe(true)
       const firstResponse = await fetch(`${first.url}/api/docs`)
       expect(firstResponse.status).toBe(200)
-
+      expect((await firstResponse.json()).project).toBe('root')
       const firstEntry = await readEntry(registryRoot)
       expect(firstEntry).toEqual({
         holders: [process.pid],

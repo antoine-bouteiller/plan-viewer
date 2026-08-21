@@ -483,6 +483,7 @@ const serve = (port: number) =>
       if (url.pathname === '/api/docs') {
         return Response.json({
           plans: buildTree(listPlans(join(ROOT, '.plan'), ROOT), { flat: true }),
+          project: basename(ROOT),
           specs: buildTree(listSpecs(ROOT)),
         })
       }

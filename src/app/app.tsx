@@ -22,7 +22,7 @@ interface DocState {
   error: string | null
 }
 
-const NO_DOCS: Docs = { plans: [], specs: [] }
+const NO_DOCS: Docs = { project: '', plans: [], specs: [] }
 
 const failed = (response: Response) => Promise.reject(new Error(`${response.status} ${response.statusText}`))
 
@@ -294,6 +294,9 @@ export const App = () => {
   const reloads = useReloads()
   const { docs, error: docsError } = useDocs(reloads)
   const { doc, pending, error: docError } = useDoc(active, reloads)
+  useEffect(() => {
+    document.title = docs.project ? `${docs.project} · Plans` : 'Plans'
+  }, [docs.project])
   const openPlan = (path: string) => setUrl({ doc: path })
   const listed = tab === 'specs' ? docs.specs : docs.plans
   const needle = query.trim().toLowerCase()
