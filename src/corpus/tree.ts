@@ -199,7 +199,24 @@ const addDocuments = (docs: DocMeta[], state: BuildState) => {
   }
 }
 
-const attachUmbrellas = (directories: Map<string, InternalNode>, metadata: Map<InternalNode, DocMeta>, flat: boolean) => {
+const resolvesToUmbrella = (child: InternalNode, umbrella: InternalNode, state: Pick<BuildState, 'documents' | 'metadata'>) => {
+  const childDoc = state.metadata.get(child)
+  const umbrellaDoc = state.metadata.get(umbrella)
+  if (!childDoc || !umbrellaDoc) {
+    return false
+  }
+  if (childDoc['parent-spec'] === umbrellaDoc.path) {
+    return true
+  }
+  if (!isCompanion(child.kind)) {
+    return false
+  }
+  const spec = state.documents.get(`${stemOf(childDoc.path)}.spec.md`) ?? state.documents.get(`${stemOf(childDoc.path)}.spec.mdx`)
+  return spec !== undefined && state.metadata.get(spec)?.['parent-spec'] === umbrellaDoc.path
+}
+
+const attachUmbrellas = (state: BuildState, flat: boolean) => {
+  const { directories, metadata } = state
   const represented = new Map<InternalNode, InternalNode>()
   for (const [directoryPath, directory] of directories) {
     const nested = directory.children.some((child) => child.directory)
@@ -209,7 +226,9 @@ const attachUmbrellas = (directories: Map<string, InternalNode>, metadata: Map<I
         return doc?.kind === 'umbrella' || (doc !== undefined && isPlanIndex(doc))
       })
       .toSorted((first, second) => (first.path ?? '').localeCompare(second.path ?? ''))
-    if (directoryPath && umbrella && !nested) {
+    const coversSiblings =
+      umbrella?.kind !== 'umbrella' || directory.children.every((child) => child === umbrella || resolvesToUmbrella(child, umbrella, state))
+    if (directoryPath && umbrella && !nested && coversSiblings) {
       const umbrellaName = flat || umbrella.kind === 'umbrella' ? umbrella.name : directory.name
       attachDocument(directory, umbrella)
       directory.name = umbrellaName
@@ -261,8 +280,9 @@ export const buildTree = (docs: DocMeta[], { flat = false }: { flat?: boolean } 
   const directories = new Map<string, InternalNode>([['', root]])
   const documents = new Map<string, InternalNode>()
   const metadata = new Map<InternalNode, DocMeta>()
-  addDocuments(docs, { directories, documents, metadata, root })
-  const represented = attachUmbrellas(directories, metadata, flat)
+  const state = { directories, documents, metadata, root }
+  addDocuments(docs, state)
+  const represented = attachUmbrellas(state, flat)
   attachCompanions(metadata, documents, represented)
   attachParents(metadata, documents, represented)
   if (flat) {

@@ -32,8 +32,11 @@ describe('buildTree', () => {
     })
   })
 
-  test('attaches an umbrella document to its directory row', () => {
-    const tree = buildTree([doc('area/area.spec.md', 'Area overview', { kind: 'umbrella', status: 'active' }), doc('area/child.spec.md', 'Child')])
+  test('absorbs an umbrella when every sibling document links to it', () => {
+    const tree = buildTree([
+      doc('area/area.spec.md', 'Area overview', { kind: 'umbrella', status: 'active' }),
+      doc('area/child.spec.md', 'Child', { 'parent-spec': 'area/area.spec.md' }),
+    ])
 
     expect(tree).toHaveLength(1)
     expect(tree[0]).toMatchObject({
@@ -43,6 +46,31 @@ describe('buildTree', () => {
       status: 'active',
     })
     expect(tree[0].children).toEqual([expect.objectContaining({ kind: 'leaf', name: 'Child', path: 'area/child.spec.md' })])
+  })
+
+  test('does not absorb an umbrella when a sibling document does not link to it', () => {
+    const tree = buildTree([
+      doc('area/area.spec.md', 'Area overview', { kind: 'umbrella' }),
+      doc('area/linked.spec.md', 'Linked', { 'parent-spec': 'area/area.spec.md' }),
+      doc('area/unlinked.spec.md', 'Unlinked'),
+    ])
+
+    expect(tree).toHaveLength(1)
+    expect(tree[0]).toMatchObject({ kind: 'dir', name: 'area', path: undefined })
+    expect(child(tree[0], 'Area overview').children).toEqual([expect.objectContaining({ name: 'Linked', path: 'area/linked.spec.md' })])
+    expect(tree[0].children).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'Unlinked', path: 'area/unlinked.spec.md' })]))
+  })
+
+  test('absorbs an umbrella when a companion belongs to a linking sibling spec', () => {
+    const tree = buildTree([
+      doc('area/area.spec.md', 'Area overview', { kind: 'umbrella' }),
+      doc('area/child.spec.md', 'Child', { 'parent-spec': 'area/area.spec.md' }),
+      doc('area/child.discovery.md', 'Child discovery'),
+    ])
+
+    expect(tree).toHaveLength(1)
+    expect(tree[0]).toMatchObject({ kind: 'umbrella', name: 'Area overview', path: 'area/area.spec.md' })
+    expect(child(tree[0], 'Child').children).toEqual([expect.objectContaining({ kind: 'discovery', path: 'area/child.discovery.md' })])
   })
 
   test('leaves an umbrella as a document row when its directory has subdirectories', () => {
@@ -60,7 +88,7 @@ describe('buildTree', () => {
 
   test('uses the first umbrella by path and leaves another as a document row', () => {
     const tree = buildTree([
-      doc('area/z.spec.md', 'Later umbrella', { kind: 'umbrella' }),
+      doc('area/z.spec.md', 'Later umbrella', { kind: 'umbrella', 'parent-spec': 'area/a.spec.md' }),
       doc('area/a.spec.md', 'First umbrella', { kind: 'umbrella' }),
     ])
 
