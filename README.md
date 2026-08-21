@@ -1,8 +1,8 @@
 # plan-viewer
 
-A local browser for the plans (`.plan/*.md`) and specs (`*.spec.md`, `*.spec.mdx`) in one project root or worktree.
+A local browser for the plans (`.plan/*.md`) and specs (`*.spec.md`, `*.spec.mdx`) across one project's worktrees.
 
-## Run a project or worktree
+## Run a project
 
 Install this repository's dependencies, then pass the project or worktree root explicitly:
 
@@ -15,9 +15,10 @@ bun src/server.ts /path/to/project-or-worktree
 The server prints its loopback URL. To choose a port, pass `--port <number>` after the root;
 otherwise the OS chooses an available port.
 
-Use a checkout or worktree as the root. Plans are read from its `.plan/` directory and specs are
-its tracked `*.spec.md` and `*.spec.mdx` files. The viewer does not discover sibling repositories
-or worktrees.
+Use any checkout or worktree as the root. The viewer discovers that Git project's worktrees and
+provides a picker between them; it does not discover unrelated repositories. Plans are read from
+the selected worktree's `.plan/` directory and specs are its tracked `*.spec.md` and `*.spec.mdx`
+files.
 
 ## Use with pi
 
@@ -35,19 +36,20 @@ is run):
 pi install /path/to/plan-viewer
 ```
 
-Start pi in a trusted project or worktree. The extension starts a viewer for pi's current working
-directory and announces its URL. Run `/plan-viewer` in that session to open the announced viewer
-again.
+Start pi in a trusted project or worktree. The extension starts one viewer per Git project and
+announces its URL; sessions in sibling worktrees share it. Run `/plan-viewer` in that session to
+open the announced viewer again.
 
 ## Routes
 
 - `GET /` — the viewer application.
-- `GET /api/docs` — plan and spec trees for the supplied root.
-- `GET /api/doc?path=<relative-path>` — a rendered document under that root.
-- `GET /api/events` — server-sent events for changes below that root.
+- `GET /api/projects` — the project and its worktrees.
+- `GET /api/docs?wt=<worktree>` — plan and spec trees for the selected worktree.
+- `GET /api/doc?wt=<worktree>&path=<relative-path>` — a rendered document under that worktree.
+- `GET /api/events?wt=<worktree>` — server-sent events for changes below that worktree.
 - `GET /assets/mermaid/<file>` — Mermaid JavaScript assets used by rendered diagrams.
 
-Document paths outside the selected root are rejected.
+Unknown worktrees and document paths outside the selected worktree are rejected.
 
 ## Plan format
 

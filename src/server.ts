@@ -5,6 +5,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { buildTree, type DocMeta, type DocNode } from './corpus/tree.ts'
 import index from './index.html'
 import { readEntry, updateEntry } from './launcher/registry.ts'
+import { projectOf } from './project.ts'
 import { cachedRender } from './render/cache'
 import { ready, renderDoc } from './render/index'
 
@@ -50,6 +51,8 @@ try {
 } catch {
   fail(`cannot resolve root: ${rootArgument}`)
 }
+
+const PROJECT = projectOf(ROOT)
 
 const portArgument = args.indexOf('--port')
 const portValue = portArgument === -1 ? undefined : args[portArgument + 1]
@@ -253,6 +256,46 @@ const listPlans = (dir: string, root: string, kind: 'plan' | 'phase' = 'plan'): 
     }
   }
   return plans
+}
+
+// A listed worktree is the only root a request may read under.
+const sameProject = (path: string) => {
+  try {
+    return projectOf(path).key === PROJECT.key
+  } catch {
+    return false
+  }
+}
+
+const projectAt = (root: string) => {
+  try {
+    return projectOf(root)
+  } catch {
+    return undefined
+  }
+}
+
+const currentProject = () => {
+  for (const root of [ROOT, ...PROJECT.worktrees.map((worktree) => worktree.path)]) {
+    const project = projectAt(root)
+    if (project?.key === PROJECT.key) {
+      return { ...project, worktrees: project.worktrees.filter((worktree) => sameProject(worktree.path)) }
+    }
+  }
+  return { ...PROJECT, worktrees: [] }
+}
+
+const worktreeAt = (path: string): string | undefined => {
+  if (!path) {
+    return undefined
+  }
+  let wanted = ''
+  try {
+    wanted = realpathSync(path)
+  } catch {
+    return undefined
+  }
+  return currentProject().worktrees.find((worktree) => worktree.path === wanted)?.path
 }
 
 const SPEC = /\.(?<kind>spec|discovery|examples)\.mdx?$/
@@ -480,20 +523,31 @@ const serve = (port: number) =>
     async fetch(request) {
       const url = new URL(request.url)
 
+      if (url.pathname === '/api/projects') {
+        const { key: _key, ...project } = currentProject()
+        return Response.json({ projects: [project] })
+      }
+
       if (url.pathname === '/api/docs') {
+        const worktree = worktreeAt(url.searchParams.get('wt') ?? '')
+        if (!worktree) {
+          return new Response('forbidden', { status: 403 })
+        }
         return Response.json({
-          plans: buildTree(listPlans(join(ROOT, '.plan'), ROOT), { flat: true }),
-          project: basename(ROOT),
-          specs: buildTree(listSpecs(ROOT)),
+          plans: buildTree(listPlans(join(worktree, '.plan'), worktree), { flat: true }),
+          project: PROJECT.name,
+          specs: buildTree(listSpecs(worktree)),
         })
       }
 
       if (url.pathname === '/api/doc') {
-        return documentResponse(ROOT, url.searchParams.get('path') ?? '')
+        const worktree = worktreeAt(url.searchParams.get('wt') ?? '')
+        return worktree ? documentResponse(worktree, url.searchParams.get('path') ?? '') : new Response('forbidden', { status: 403 })
       }
 
       if (url.pathname === '/api/events') {
-        return eventsResponse(request, ROOT)
+        const worktree = worktreeAt(url.searchParams.get('wt') ?? '')
+        return worktree ? eventsResponse(request, worktree) : new Response('forbidden', { status: 403 })
       }
 
       if (request.method === 'GET' && url.pathname.startsWith('/assets/mermaid/')) {
@@ -530,11 +584,11 @@ if (process.env.PLAN_VIEWER_MANAGED === '1') {
     return operations
   }
 
-  const clearOwnedRun = () => updateEntry(ROOT, (entry) => (entry?.pid === process.pid ? { holders: [], port: entry.port } : entry))
+  const clearOwnedRun = () => updateEntry(PROJECT.key, (entry) => (entry?.pid === process.pid ? { holders: [], port: entry.port } : entry))
 
   const shouldStopForEmptyRun = async () => {
     let shouldStop = true
-    await updateEntry(ROOT, (entry) => {
+    await updateEntry(PROJECT.key, (entry) => {
       if (entry?.pid === process.pid && entry.holders.length > 0) {
         shouldStop = false
         return entry
@@ -560,7 +614,7 @@ if (process.env.PLAN_VIEWER_MANAGED === '1') {
 
       let entry: Awaited<ReturnType<typeof readEntry>> = undefined
       try {
-        entry = await readEntry(ROOT)
+        entry = await readEntry(PROJECT.key)
       } catch {
         await stop()
         return

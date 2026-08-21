@@ -10,7 +10,7 @@ related: []
 ## 2. Problem Statement
 
 This leaf owns umbrella `[G-3]` and the navigation half of `[G-5]`: getting a reader from the
-server's root folder to one of a few hundred documents. Those documents carry two overlapping structures — the
+selected worktree to one of a few hundred documents. Those documents carry two overlapping structures — the
 directory layout that puts a spec beside the code it describes, and the `parent-spec` graph that binds
 umbrellas to their leaves — plus companion discovery and example documents sharing a spec's stem, and
 plan folders whose `index.md` owns the status of its phase files. The sidebar renders all of it as one
@@ -33,14 +33,14 @@ Goals are owned by the umbrella.
 
 ## 4. Principles & Intents
 
-- `[PI-1.1]` Refines umbrella `[PI-3.1]`: discovery lists tracked files with `git ls-files` inside the
-  root folder, so it cannot follow a link out of it.
+- `[PI-1.1]` Refines umbrella `[PI-3.2]`: discovery lists tracked files with `git ls-files` inside the
+  selected worktree, so it cannot follow a link out of it.
 
 ## 5. Non-Goals
 
 - `[NG-1]` Refines umbrella `[NG-1]`: the tree offers no drag, reorder, rename, or any other mutation.
-- `[NG-2.1]` Refines umbrella `[NG-4]` and `[NG-9]`: the tree is scoped to the server's root folder —
-  it carries no project or worktree selector and no cross-folder view — and renders its rows directly,
+- `[NG-2.2]` Refines umbrella `[NG-4]` and `[NG-9]`: the tree is scoped to the selected worktree;
+  the sidebar carries one worktree selector but no cross-project view, and renders its rows directly,
   without virtualisation.
 
 ## 6. Caveats
@@ -137,4 +137,5 @@ None; see umbrella §9.
 | 2026-08-14 | The whole row is the click target                                      | 8.3               | Only the label was clickable, and folders needed a chevron hit                            |
 | 2026-08-14 | The plans tree is flat                                                 | 3, 8.2            | `.plan/` subdirectories only group a plan index with its phases, which is already one row |
 | 2026-08-15 | Root-scoped tree, no selectors (`[NG-2.1]`, `[KD-6.1]`, `[PI-1.1]`)    | 2, 3, 4, 5, 8     | Umbrella `[KD-9]`: the session supplies the folder                                        |
+| 2026-08-21 | Tree follows the selected worktree (`[NG-2.2]`)                        | 2, 4, 5, 8        | Umbrella `[KD-9.1]`: sibling worktrees share one viewer                                   |
 | 2026-08-15 | Absorption requires every sibling to link to the umbrella (`[KD-3.2]`) | 3, 8.2            | A standalone spec beside an umbrella rendered as one of its leaves                        |

@@ -1,8 +1,9 @@
 /* eslint-disable complexity, init-declarations, max-params, no-await-in-loop, typescript/consistent-type-definitions */
-import { realpath, stat } from 'node:fs/promises'
+import { realpathSync } from 'node:fs'
 import { dirname, join, resolve as pathResolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { projectOf } from '../project.ts'
 import { updateEntry, type ViewerEntry } from './registry.ts'
 
 export type Viewer = {
@@ -43,14 +44,9 @@ const stderrTail = (stream: ReadableStream<Uint8Array> | null | undefined) => {
 const launchError = (message: string, stderr: string, cause?: unknown) =>
   new Error(message, { cause: stderr.trim() ? new Error(stderr.trim()) : cause })
 
-const validatedRoot = async (root: string) => {
+const validatedProject = (root: string) => {
   try {
-    const resolved = await realpath(root)
-    const details = await stat(resolved)
-    if (!details.isDirectory()) {
-      throw new Error('not a directory')
-    }
-    return resolved
+    return { ...projectOf(root), root: realpathSync(root) }
   } catch (error) {
     throw new Error(`cannot resolve root: ${root}`, { cause: error })
   }
@@ -94,9 +90,9 @@ const clearFailedClaim = async (root: string, holder: number) => {
   })
 }
 
-const spawnCreator = async (root: string, holder: number, port: number, deadline: number): Promise<string> => {
+const spawnCreator = async (root: string, serverRoot: string, holder: number, port: number, deadline: number): Promise<string> => {
   const serverEntry = process.env.PLAN_VIEWER_SERVER_ENTRY ?? join(packageRoot, 'src', 'server.ts')
-  const command = ['bun', serverEntry, root]
+  const command = ['bun', serverEntry, serverRoot]
   if (port !== 0) {
     command.push('--port', String(port))
   }
@@ -182,15 +178,15 @@ const spawnCreator = async (root: string, holder: number, port: number, deadline
 }
 
 export const acquire = async (root: string, holder: number): Promise<Viewer> => {
-  const resolvedRoot = await validatedRoot(root)
+  const project = validatedProject(root)
   const deadline = Date.now() + startupTimeoutMs
 
   let created = false
   let url = ''
   while (Date.now() < deadline) {
-    const decision = await claim(resolvedRoot, holder)
+    const decision = await claim(project.key, holder)
     if (Date.now() >= deadline) {
-      await (decision.kind === 'create' ? clearFailedClaim(resolvedRoot, holder) : releaseHolder(resolvedRoot, holder))
+      await (decision.kind === 'create' ? clearFailedClaim(project.key, holder) : releaseHolder(project.key, holder))
       throw new Error('timed out waiting for plan-viewer server to announce its URL')
     }
     if (decision.kind === 'adopt') {
@@ -200,7 +196,7 @@ export const acquire = async (root: string, holder: number): Promise<Viewer> => 
     }
     if (decision.kind === 'create') {
       created = true
-      url = await spawnCreator(resolvedRoot, holder, decision.port, deadline)
+      url = await spawnCreator(project.key, project.root, holder, decision.port, deadline)
       break
     }
 
@@ -208,7 +204,7 @@ export const acquire = async (root: string, holder: number): Promise<Viewer> => 
   }
 
   if (!url) {
-    await releaseHolder(resolvedRoot, holder)
+    await releaseHolder(project.key, holder)
     throw new Error('timed out waiting for plan-viewer server to announce its URL')
   }
 
@@ -216,7 +212,7 @@ export const acquire = async (root: string, holder: number): Promise<Viewer> => 
   return {
     created,
     release: () => {
-      released ??= releaseHolder(resolvedRoot, holder)
+      released ??= releaseHolder(project.key, holder)
       return released
     },
     url,

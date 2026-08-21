@@ -7,11 +7,12 @@ import { CopyChip } from '@/components/ui/copy-chip'
 import { LoadingIcon, SearchIcon } from '@/components/ui/icons'
 import { Meter } from '@/components/ui/meter'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { ratio, statusToken, statusTone, type Counts, type Doc, type DocNode, type Docs, type Tab } from '@/lib/plan'
+import { ratio, statusToken, statusTone, type Counts, type Doc, type DocNode, type Docs, type Project, type Tab } from '@/lib/plan'
 import { useUrlState } from '@/lib/url-state'
 import { cn } from '@/lib/utils'
 
 interface DocsState {
+  wt: string
   docs: Docs
   error: string | null
 }
@@ -22,7 +23,7 @@ interface DocState {
   error: string | null
 }
 
-const NO_DOCS: Docs = { project: '', plans: [], specs: [] }
+const NO_DOCS: Docs = { plans: [], project: '', specs: [] }
 
 const failed = (response: Response) => Promise.reject(new Error(`${response.status} ${response.statusText}`))
 
@@ -67,45 +68,49 @@ const onArticleClick = (event: React.MouseEvent<HTMLElement>, onOpenDoc: (path: 
   })
 }
 
-const useDocs = (reloads: number) => {
+const useDocs = (wtPath: string | undefined, reloads: number) => {
   const [loaded, setLoaded] = useState<DocsState | null>(null)
+  const current = loaded?.wt === wtPath ? loaded : null
 
   useEffect(() => {
+    if (!wtPath) {
+      return undefined
+    }
     let alive = true
-    fetch('/api/docs')
+    fetch(`/api/docs?wt=${encodeURIComponent(wtPath)}`)
       .then((response) => (response.ok ? response.json() : failed(response)))
       .then((data: Docs) => {
         if (alive) {
-          setLoaded({ docs: data, error: null })
+          setLoaded({ docs: data, error: null, wt: wtPath })
         }
       })
       .catch((error: Error) => {
         if (alive) {
-          setLoaded({ docs: NO_DOCS, error: error.message })
+          setLoaded({ docs: NO_DOCS, error: error.message, wt: wtPath })
         }
       })
     return () => {
       alive = false
     }
-  }, [reloads])
+  }, [wtPath, reloads])
 
-  return { docs: loaded?.docs ?? NO_DOCS, error: loaded?.error ?? null }
+  return { docs: current?.docs ?? NO_DOCS, error: current?.error ?? null }
 }
 
-const useDoc = (active: string | null, reloads: number) => {
+const useDoc = (wtPath: string | undefined, active: string | null, reloads: number) => {
   const [loaded, setLoaded] = useState<DocState | null>(null)
   const opened = useRef('')
-  const key = active ?? ''
+  const key = wtPath && active ? `${wtPath}|${active}` : ''
   const current = loaded?.key === key ? loaded : null
 
   useEffect(() => {
-    if (!active) {
+    if (!wtPath || !active) {
       return undefined
     }
     const silent = opened.current === key
     opened.current = key
     let alive = true
-    fetch(`/api/doc?path=${encodeURIComponent(active)}`)
+    fetch(`/api/doc?wt=${encodeURIComponent(wtPath)}&path=${encodeURIComponent(active)}`)
       .then((response) => (response.ok ? response.json() : failed(response)))
       .then((data: Doc) => {
         if (!alive) {
@@ -124,7 +129,7 @@ const useDoc = (active: string | null, reloads: number) => {
     return () => {
       alive = false
     }
-  }, [active, key, reloads])
+  }, [wtPath, active, key, reloads])
 
   return {
     doc: current?.doc ?? null,
@@ -133,13 +138,31 @@ const useDoc = (active: string | null, reloads: number) => {
   }
 }
 
-const useReloads = () => {
+const useProjects = () => {
+  const [projects, setProjects] = useState<Project[]>([])
+  useEffect(() => {
+    const load = () =>
+      fetch('/api/projects')
+        .then((response) => (response.ok ? response.json() : failed(response)))
+        .then((data: { projects: Project[] }) => setProjects(data.projects))
+        .catch(() => setProjects([]))
+    void load()
+    addEventListener('focus', load)
+    return () => removeEventListener('focus', load)
+  }, [])
+  return projects
+}
+
+const useReloads = (wtPath: string | undefined) => {
   const [reloads, setReloads] = useState(0)
   useEffect(() => {
-    const events = new EventSource('/api/events')
+    if (!wtPath) {
+      return undefined
+    }
+    const events = new EventSource(`/api/events?wt=${encodeURIComponent(wtPath)}`)
     events.addEventListener('message', () => setReloads((count) => count + 1))
     return () => events.close()
-  }, [])
+  }, [wtPath])
   return reloads
 }
 
@@ -289,11 +312,26 @@ const DocumentPane = ({
 export const App = () => {
   const [url, setUrl] = useUrlState()
   const [query, setQuery] = useState('')
+  const projects = useProjects()
+  const [project] = projects
+  const worktree = project?.worktrees.find((item) => item.path === url.wt)
+  const wtPath = worktree?.path
   const tab: Tab = url.tab === 'specs' ? 'specs' : 'plans'
   const active = url.doc ?? null
-  const reloads = useReloads()
-  const { docs, error: docsError } = useDocs(reloads)
-  const { doc, pending, error: docError } = useDoc(active, reloads)
+  const reloads = useReloads(wtPath)
+  const { docs, error: docsError } = useDocs(wtPath, reloads)
+  const { doc, pending, error: docError } = useDoc(wtPath, active, reloads)
+
+  useEffect(() => {
+    if (!project || worktree) {
+      return
+    }
+    const defaultWorktree = project.worktrees.find((item) => item.main) ?? project.worktrees[0]
+    if (defaultWorktree) {
+      setUrl({ doc: undefined, wt: defaultWorktree.path })
+    }
+  }, [project, worktree, setUrl])
+
   useEffect(() => {
     document.title = docs.project ? `${docs.project} · Plans` : 'Plans'
   }, [docs.project])
@@ -324,12 +362,15 @@ export const App = () => {
 
         <nav aria-label="Plans" className="flex-1 overflow-y-auto p-3">
           <PlanList
+            project={project}
+            worktree={worktree}
             tab={tab}
             nodes={listed}
             filteredNodes={filtered}
             filtering={Boolean(needle)}
             active={active}
             onOpen={openPlan}
+            onWorktree={(path) => setUrl({ doc: undefined, wt: path })}
             onTab={(next) => setUrl({ doc: undefined, tab: next })}
           />
         </nav>

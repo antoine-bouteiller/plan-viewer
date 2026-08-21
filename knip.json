@@ -5,11 +5,5 @@
   "ignoreIssues": {
     "src/launcher/registry.ts": ["types"]
   },
-  "ignoreDependencies": [
-    "@commitlint/cli",
-    "bun-plugin-tailwind",
-    // keep: lefthook is not installed in CI, so knip would wrongly flag it there
-    "lefthook",
-    "mermaid"
-  ]
+  "ignoreDependencies": ["@commitlint/cli", "bun-plugin-tailwind", "mermaid"]
 }

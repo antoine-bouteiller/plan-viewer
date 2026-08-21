@@ -1,8 +1,9 @@
 /* eslint-disable complexity, init-declarations, no-await-in-loop, unicorn/no-await-expression-member, unicorn/numeric-separators-style */
 import { expect, test } from 'bun:test'
+import { execFileSync } from 'node:child_process'
 import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 
 import { acquire, type Viewer } from './index'
 import { readEntry } from './registry'
@@ -65,6 +66,7 @@ test(
   async () => {
     const directory = await mkdtemp(join(tmpdir(), 'plan-viewer-launcher-'))
     const root = join(directory, 'root')
+    const worktreeRoot = join(directory, 'worktree')
     const earlyExitRoot = join(directory, 'early-exit-root')
     const timeoutRoot = join(directory, 'timeout-root')
     const pathlessRoot = join(directory, 'pathless-root')
@@ -89,17 +91,29 @@ test(
     delete process.env.PLAN_VIEWER_SERVER_ENTRY
     try {
       await Promise.all([mkdir(root), mkdir(earlyExitRoot), mkdir(timeoutRoot), mkdir(pathlessRoot)])
+      execFileSync('git', ['init', '-q', root])
+      execFileSync('git', ['-C', root, 'config', 'user.email', 'plan-viewer@example.test'])
+      execFileSync('git', ['-C', root, 'config', 'user.name', 'Plan Viewer Test'])
+      await writeFile(join(root, 'README.md'), 'test\n')
+      execFileSync('git', ['-C', root, 'add', 'README.md'])
+      execFileSync('git', ['-C', root, 'commit', '-qm', 'test'])
+      execFileSync('git', ['-C', root, 'worktree', 'add', '-qb', 'test-worktree', worktreeRoot])
       ;[registryRoot, registryEarlyExitRoot, registryTimeoutRoot, registryPathlessRoot] = await Promise.all([
-        realpath(root),
+        realpath(join(root, '.git')),
         realpath(earlyExitRoot),
         realpath(timeoutRoot),
         realpath(pathlessRoot),
       ])
 
-      const first = await acquire(root, process.pid)
+      const first = await acquire(relative(process.cwd(), root), process.pid)
       viewers.push(first)
       expect(first.created).toBe(true)
-      const firstResponse = await fetch(`${first.url}/api/docs`)
+      const projectsResponse = await fetch(`${first.url}/api/projects`)
+      expect(projectsResponse.status).toBe(200)
+      expect((await projectsResponse.json()).projects[0].worktrees).toHaveLength(2)
+      expect((await fetch(`${first.url}/api/docs`)).status).toBe(403)
+      expect((await fetch(`${first.url}/api/docs?wt=${encodeURIComponent(earlyExitRoot)}`)).status).toBe(403)
+      const firstResponse = await fetch(`${first.url}/api/docs?wt=${encodeURIComponent(root)}`)
       expect(firstResponse.status).toBe(200)
       expect((await firstResponse.json()).project).toBe('root')
       const firstEntry = await readEntry(registryRoot)
@@ -115,13 +129,15 @@ test(
       }
 
       helper = Bun.spawn([process.execPath, '-e', 'setInterval(() => {}, 1000)'])
-      const second = await acquire(root, helper.pid)
+      const second = await acquire(worktreeRoot, helper.pid)
       viewers.push(second)
       expect(second).toEqual(expect.objectContaining({ created: false, url: first.url }))
       expect((await readEntry(registryRoot))?.holders).toEqual([process.pid, helper.pid])
+      await Bun.sleep(5200)
+      expect((await fetch(`${second.url}/api/projects`)).status).toBe(200)
 
       await first.release()
-      const secondResponse = await fetch(`${second.url}/api/docs`)
+      const secondResponse = await fetch(`${second.url}/api/docs?wt=${encodeURIComponent(worktreeRoot)}`)
       expect(secondResponse.status).toBe(200)
       expect((await readEntry(registryRoot))?.holders).toEqual([helper.pid])
 

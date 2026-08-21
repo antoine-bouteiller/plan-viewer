@@ -32,7 +32,7 @@ Goals are owned by the umbrella.
 
 ## 4. Principles & Intents
 
-- `[PI-1]` Refines umbrella `[PI-3.1]`: `src/render/` receives a path string and a source string, never a
+- `[PI-1]` Refines umbrella `[PI-3.2]`: `src/render/` receives a path string and a source string, never a
   filesystem root, so it cannot read anything.
 - `[PI-2]` Refines umbrella `[PI-4]`: a render is a pure function of its inputs — no module-level
   mutable state between calls, and no streaming or incremental output.
@@ -49,8 +49,8 @@ Goals are owned by the umbrella.
 - `[C-1]` The MDX stage skips `inlineCode` and `code` nodes; see umbrella `[C-2]`.
 - `[C-2]` Shiki's dual-theme output uses CSS variables, so the stylesheet maps them onto the
   `data-theme` attribute the theme selector sets rather than `prefers-color-scheme`.
-- `[C-3.1]` Root-folder markdown is trusted input: HTML in a document reaches the page unsanitised,
-  so a viewer only ever runs for a root the harness reports as trusted
+- `[C-3.1]` Project markdown is trusted input: HTML in a document reaches the page unsanitised, so
+  trusting a worktree to start the viewer also trusts its Git-enumerated sibling worktrees
   (spec/harness-integration.spec.md `[KD-8]`).
 
 ## 7. High-Level Components
@@ -141,10 +141,11 @@ is the document body below its H1 and frontmatter.
 }
 ```
 
-The endpoint accepts a root-relative path under `.plan/` with a `.md` suffix, or any
-`*.spec.md(x)`, `*.discovery.md(x)`, `*.examples.md(x)` inside the root folder (umbrella `[KD-8]`),
-and resolves both the path and its realpath against the root folder per umbrella `[PI-3.1]`. Responses:
-403 outside the root folder or for a disallowed suffix, 404 for a missing file, otherwise 200. A render
+The endpoint accepts `wt` plus a worktree-relative path under `.plan/` with a `.md` suffix, or any
+`*.spec.md(x)`, `*.discovery.md(x)`, `*.examples.md(x)` inside that worktree (umbrella `[KD-8]`).
+It first requires `wt` to belong to the fixed project, then resolves both the path and its realpath
+against that worktree per umbrella `[PI-3.2]`. Responses: 403 for an unknown worktree, a path outside
+the worktree, or a disallowed suffix; 404 for a missing file; otherwise 200. A render
 throw yields a `degraded` document containing the escaped source, never a 500 (umbrella `[PI-2]`).
 
 ### 8.5 Client
@@ -186,3 +187,4 @@ None; see umbrella §9.
 | ---------- | -------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------- |
 | 2026-08-14 | Diagrams track the effective theme                                   | 8.5               | Diagram palette must follow `prefers-color-scheme` and theme switches                 |
 | 2026-08-15 | `/api/doc` confines paths to the root folder (`[C-3.1]`, `rootPath`) | 6, 8.4            | Umbrella `[KD-9]`: the session supplies the folder, so there is no worktree parameter |
+| 2026-08-21 | `/api/doc` requires an allowlisted `wt` (`[PI-3.2]`)                 | 6, 8.4            | One project viewer can serve multiple worktrees without accepting arbitrary roots     |
