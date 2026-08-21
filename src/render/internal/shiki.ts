@@ -9,7 +9,7 @@ let highlighter: Highlighter | undefined = undefined
 
 export const ready: Promise<void> = createHighlighter({
   langs: languages,
-  themes: ['github-light', 'github-dark'],
+  themes: ['catppuccin-latte', 'catppuccin-mocha'],
 })
   .then((instance) => {
     highlighter = instance
@@ -56,7 +56,7 @@ const shiki: Plugin<[], Root> = () => (tree) => {
     try {
       const highlighted = instance.codeToHast(textOf(code), {
         lang: language,
-        themes: { dark: 'github-dark', light: 'github-light' },
+        themes: { dark: 'catppuccin-mocha', light: 'catppuccin-latte' },
       })
       const pre = highlighted.children.find((child): child is Element => child.type === 'element' && child.tagName === 'pre')
 
