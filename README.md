@@ -37,8 +37,8 @@ pi install /path/to/plan-viewer
 ```
 
 Start pi in a trusted project or worktree. The extension starts one viewer per Git project and
-announces its URL; sessions in sibling worktrees share it. Run `/plan-viewer` in that session to
-open the announced viewer again.
+shows its URL in pi's status; sessions in sibling worktrees share it, and subagent sessions do not
+start it. Run `/plan-viewer` to open the viewer in your browser.
 
 ## Routes
 

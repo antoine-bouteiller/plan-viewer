@@ -18,6 +18,10 @@ const browserCommand = (url: string): [string, string[]] => {
 }
 
 const planViewerExtension = (pi: ExtensionAPI) => {
+  if (process.env.PI_SUBAGENT_OWNER_TOKEN !== undefined) {
+    return
+  }
+
   const viewers = new Map<string, Promise<Viewer>>()
 
   const forget = (root: string, viewer: Promise<Viewer>) => {
@@ -32,6 +36,7 @@ const planViewerExtension = (pi: ExtensionAPI) => {
   }
 
   pi.on('session_start', async (_event, ctx) => {
+    ctx.ui.setStatus('plan-viewer', undefined)
     if (!ctx.isProjectTrusted()) {
       ctx.ui.notify('plan-viewer: untrusted project', 'info')
       return
@@ -47,10 +52,7 @@ const planViewerExtension = (pi: ExtensionAPI) => {
 
       try {
         const handle = await viewer
-        if (!existing && handle.created) {
-          openBrowser(handle.url)
-        }
-        ctx.ui.notify(`plan-viewer: ${handle.url}`, 'info')
+        ctx.ui.setStatus('plan-viewer', `plan-viewer: ${handle.url}`)
       } catch (error) {
         forget(root, viewer)
         ctx.ui.notify(`plan-viewer: ${errorMessage(error)}`, 'info')
@@ -89,7 +91,7 @@ const planViewerExtension = (pi: ExtensionAPI) => {
 
         try {
           const handle = await viewer
-          ctx.ui.notify(`plan-viewer: ${handle.url}`, 'info')
+          ctx.ui.setStatus('plan-viewer', `plan-viewer: ${handle.url}`)
           openBrowser(handle.url)
         } catch (error) {
           forget(root, viewer)

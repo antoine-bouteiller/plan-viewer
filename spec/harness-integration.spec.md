@@ -11,10 +11,10 @@ related: [spec/viewer.spec.md]
 plan-viewer reads the design corpus of the Git project a coding agent is working in — the plans it
 is executing and the specs it is writing across that project's worktrees. The session identifies the
 project; the reader selects the worktree inside one shared viewer. The first session in any worktree
-starts and opens that project viewer, and the last session in the project releases it. Coding
-harnesses differ in how they expose that lifecycle — pi loads in-process TypeScript extensions and
-emits `session_start` / `session_shutdown`, Claude Code and Codex run external commands from a hook
-manifest — so the integration is one harness-agnostic launcher plus a thin adapter per harness.
+starts that project viewer, and the last session in the project releases it. Coding harnesses differ
+in how they expose that lifecycle — pi loads in-process TypeScript extensions and emits
+`session_start` / `session_shutdown`, Claude Code and Codex run external commands from a hook manifest
+— so the integration is one harness-agnostic launcher plus a thin adapter per harness.
 
 - `[G-1]` The viewer serves exactly one Git project and lets the reader select among its worktrees,
   without scanning for unrelated projects.
@@ -22,8 +22,8 @@ manifest — so the integration is one harness-agnostic launcher plus a thin ada
   process outlives the sessions that asked for it.
 - `[G-3]` Harness knowledge lives in adapters over one contract, so pi, Claude Code, Codex, or any
   harness with a session lifecycle integrates without touching the viewer.
-- `[G-4]` The reader reaches the viewer without looking for its URL, and the tab they opened keeps
-  working across the session churn of `/reload`, `/new`, `/resume` and `/fork`.
+- `[G-4]` The reader sees the viewer URL in persistent session status and can open it explicitly;
+  an open tab keeps working across the session churn of `/reload`, `/new`, `/resume` and `/fork`.
 - `[G-5]` A viewer runs only for a project the reader has trusted through an agent session; that
   trust covers its Git-enumerated sibling worktrees.
 
@@ -37,7 +37,7 @@ manifest — so the integration is one harness-agnostic launcher plus a thin ada
 | `[KD-4]` Acquire / release           | The contract is `acquire(root, holder) → { url, release }`; nothing else crosses the boundary                                                                                                                                                                                                                                                                | Every harness lifecycle reduces to "a session needs this folder" and "it no longer does", and naming the holder rather than the process makes sharing and teardown the launcher's business instead of each adapter's                                                                                                                                               |
 | `[KD-5.2]` One viewer per project    | One user-level config file holds one entry per Git common directory; `acquire` from any worktree adopts that project's live server instead of spawning                                                                                                                                                                                                       | Worktrees are views of one project, so separate servers produce duplicate tabs and ports; the common Git directory is their stable shared identity and lets the port of `[KD-2.1]` outlive the process that chose it                                                                                                                                               |
 | `[KD-6.1]` Holders own the server    | An entry lists holder process ids; `release` drops one, and a server that claimed an entry exits when no holder is alive, polling its entry on an interval; a server started by hand claims nothing and never self-exits                                                                                                                                     | A session-end hook is not guaranteed to run — a killed terminal, a crashed harness, a harness with no end event — so liveness cannot be delegated to a farewell message; polling pids needs no supervisor and covers both graceful and abrupt ends                                                                                                                 |
-| `[KD-7]` Open once per viewer        | The adapter opens the browser when `acquire` created the server, never when it adopted one, and a harness command reopens the URL on demand                                                                                                                                                                                                                  | Under `[KD-5.2]` the reader's tab survives session churn, so a second tab would be pure noise; the command covers the tab they closed                                                                                                                                                                                                                              |
+| `[KD-7]` Explicit browser open       | Starting a session only publishes the URL as pi status; `/plan-viewer` invokes the platform opener on demand                                                                                                                                                                                                                                                 | Automatic browser tabs interrupt the reader, while persistent status keeps the address available and the command provides a deliberate open action                                                                                                                                                                                                                 |
 | `[KD-8]` Trust gates the start       | An adapter acquires only from a worktree its harness reports as trusted; pi reads `ctx.isProjectTrusted()`, and that grant applies to the worktree's Git project                                                                                                                                                                                             | A rendered document may carry raw HTML that executes in the viewer's origin, so automatic startup requires the harness's trust decision; project-level trust is necessary because the viewer intentionally exposes sibling worktrees                                                                                                                               |
 | `[KD-9]` Adapters ship here          | The pi adapter lives in this repo under `extensions/pi/`, discovered as a pi package or a directory extension                                                                                                                                                                                                                                                | The adapter tracks the launcher contract, not the harness release cycle, so colocating removes a cross-repo version pair; pi discovers extensions from a package manifest, so no copy step is needed                                                                                                                                                               |
 
@@ -49,7 +49,7 @@ manifest — so the integration is one harness-agnostic launcher plus a thin ada
   one.
 - `[PI-3]` No stray processes — every started server has a defined way to die that does not depend on
   anything running at the right moment.
-- `[PI-4]` Quiet start — a session that starts a viewer says so in one line and asks nothing.
+- `[PI-4]` Quiet start — a session exposes its viewer URL as status without adding transcript output or opening a browser.
 
 ## 5. Non-Goals
 
@@ -72,8 +72,8 @@ manifest — so the integration is one harness-agnostic launcher plus a thin ada
   running inside a container or over SSH.
 - `[C-3]` The launcher requires `bun` resolvable from the harness environment; a login-shell-only
   PATH makes the acquire fail, and the adapter reports that failure rather than retrying.
-- `[C-4]` Opening the browser uses the platform opener (`open`, `xdg-open`, `start`); a headless
-  environment has none, and the announced URL remains the fallback.
+- `[C-4]` `/plan-viewer` uses the platform opener (`open`, `xdg-open`, `explorer.exe`); in a
+  headless environment the status URL remains available to open elsewhere.
 - `[C-5]` A process id can be reused, so an entry whose holder pid now belongs to an unrelated
   process keeps a viewer alive until the next reader closes it; it costs one idle Bun process.
 - `[C-6]` A project that is moved or deleted leaves a stale common-directory entry behind until it
@@ -90,7 +90,7 @@ harness session ──► adapter ──► launcher ──► bun src/server.ts
    start / end      (pi, …)   acquire/release      │
         ▲                          │               └─► "listening on <url>"
         │                          ▼                        │
-        └──── url, open ─── viewers.json ◄─── holder pids ─┘
+        └── url, status ─── viewers.json ◄── holder pids ─┘
            ($XDG_CONFIG_HOME|~/.config)/plan-viewer/viewers.json
 ```
 
@@ -99,7 +99,7 @@ harness session ──► adapter ──► launcher ──► bun src/server.ts
 | Project server  | Bun server entry | Bind one project, enumerate its worktrees, announce the URL, and watch holders             | `bun src/server.ts <root> [--port]`                 |
 | Launcher        | TS module        | Acquire a viewer for a root's project — adopt or spawn — and release it                    | `acquire(root, holder) → { url, created, release }` |
 | Viewer registry | TS module        | The config file of per-project entries: read, claim, add and drop holders, prune dead ones | `readEntry`, `updateEntry`                          |
-| Pi adapter      | pi extension     | Map pi session events onto the contract, open, announce, expose the command                | `extensions/pi/index.ts`, `/plan-viewer`            |
+| Pi adapter      | pi extension     | Map pi session events onto the contract, publish status, expose the open command           | `extensions/pi/index.ts`, `/plan-viewer`            |
 
 ## 8. Detailed Design
 
@@ -185,19 +185,21 @@ the holder is never dropped before it is added.
 
 ### 8.4 Pi adapter
 
-`extensions/pi/index.ts` exports the default factory pi calls with `ExtensionAPI` and holds one
-viewer per pi process, with `process.pid` as its holder id — so every session of one pi process
-shares one entry and `/reload`, `/new`, `/resume` and `/fork` change nothing about the running
-viewer `[KD-5.2]`.
+`extensions/pi/index.ts` exports the default factory pi calls with `ExtensionAPI`. It does not
+register when `PI_SUBAGENT_OWNER_TOKEN` is present, which is how `antoine-bouteiller/pi-extension`
+identifies child agents. Otherwise it holds one viewer per pi process, with `process.pid` as its
+holder id. Concurrent pi processes in one project therefore contribute distinct holders, and the
+server exits only after all of them have quit. `/reload`, `/new`, `/resume` and `/fork` change
+nothing about the running viewer `[KD-5.2]`.
 
-- `session_start` → when `ctx.isProjectTrusted()` `[KD-8]`, `acquire(ctx.cwd, process.pid)`. On
-  `created`, open the URL with the platform opener `[KD-7]`. Announce the URL in one line, whether
-  created or adopted `[PI-4]`. An untrusted project or a failed acquire is one announced line and
+- `session_start` → when `ctx.isProjectTrusted()` `[KD-8]`, `acquire(ctx.cwd, process.pid)` and set
+  the persistent `plan-viewer` status to its URL, whether created or adopted `[PI-4]`. It does not
+  open a browser. An untrusted project or failed acquire emits one informational notification and
   never fails the session.
 - `session_shutdown` → `release()` only when `event.reason === 'quit'`; the other reasons are the
   same reader continuing in the same process. Pi may re-import the extension across a reload, so the
   in-memory handle is rebuilt from the registry on the next `session_start` rather than assumed.
-- `/plan-viewer` → announce and open the current URL; with no viewer it says why (untrusted, or not
+- `/plan-viewer` → refresh the URL status and open it; with no viewer it says why (untrusted, or not
   started).
 
 The extension is declared in this repo's `package.json` under `pi.extensions`, and every dependency
@@ -216,3 +218,4 @@ None.
 | 2026-08-15 | The registry file lives at `$XDG_CONFIG_HOME`, `~/.config` by default         | 7, 8.2            | `[PI-2]`: a path under one harness's config tree would make the launcher that harness's |
 | 2026-08-15 | Only a server that claimed an entry polls holders and self-exits (`[KD-6.1]`) | 3, 5, 8.1, 8.3    | A hand-started or `bun run dev` server has no holder and would exit on its first poll   |
 | 2026-08-21 | One viewer per Git project with a worktree picker (`[KD-5.2]`, `[PI-1]`)      | 2–8               | Worktrees share project identity but retain distinct corpora                            |
+| 2026-08-21 | Pi startup publishes status without opening; subagents skip the integration   | 2–8               | Keep startup unobtrusive and prevent delegated child sessions from acquiring viewers    |
