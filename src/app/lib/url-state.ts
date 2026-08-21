@@ -1,21 +1,24 @@
 import { useCallback, useEffect, useState } from 'react'
 
+import { type Tab } from '@/lib/plan'
+
 interface UrlState {
-  project?: string
-  wt?: string
-  tab?: string
+  tab?: Tab
   doc?: string
 }
 
-const KEYS = ['project', 'wt', 'tab', 'doc'] as const
+const KEYS = ['tab', 'doc'] as const
 
 const read = (): UrlState => {
   const params = new URLSearchParams(location.search)
   const state: UrlState = {}
   for (const key of KEYS) {
     const value = params.get(key)
-    if (value) {
-      state[key] = value
+    if (value && key === 'tab' && (value === 'plans' || value === 'specs')) {
+      state.tab = value
+    }
+    if (value && key === 'doc') {
+      state.doc = value
     }
   }
   return state

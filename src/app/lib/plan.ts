@@ -27,17 +27,6 @@ export interface DocNode {
   children?: DocNode[]
 }
 
-export interface Worktree {
-  name: string
-  main: boolean
-  path: string
-}
-export interface Project {
-  name: string
-  path: string
-  worktrees: Worktree[]
-}
-
 export interface Docs {
   plans: DocNode[]
   specs: DocNode[]
@@ -52,7 +41,7 @@ export interface TocEntry {
 
 export interface Doc {
   path: string
-  repoPath: string
+  rootPath: string
   meta: Meta
   html: string
   toc: TocEntry[]

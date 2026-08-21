@@ -26,29 +26,39 @@ interface Meta {
   'parent-spec'?: string
   archived?: boolean
 }
-interface Worktree {
-  name: string
-  main: boolean
-  path: string
-}
-interface Project {
-  name: string
-  path: string
-  worktrees: Worktree[]
-}
-
 // Plan format: ~/.claude/skills/create-plan, mirroring ~/.claude/skills/writing-spec.
 // Frontmatter, then `## Problem`, `## Scope`, `## Context`, `## Acceptance criteria`
 // (AC-NNN), `## Implementation` (T-NNN), … Files predating it carry `**Status:**`
 // Under the H1 instead.
-let cache: { at: number; projects: Project[] } | undefined = undefined
+const fail = (message: string): never => {
+  process.stderr.write(`plan-viewer: ${message}\n`)
+  process.exit(1)
+}
 
-const WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || process.exit(1)
-const EXTRA_PROJECTS = (process.env.EXTRA_PROJECTS ?? '')
-  .split(':')
-  .map((projectPath) => projectPath.trim())
-  .filter(Boolean)
-const PORT = Number(process.env.PORT ?? 4321)
+const [_bun, _script, rootArgument, ...args] = Bun.argv
+if (!rootArgument) {
+  fail('root directory is required')
+}
+
+let ROOT = ''
+try {
+  ROOT = realpathSync(rootArgument)
+  if (!statSync(ROOT).isDirectory()) {
+    fail(`root is not a directory: ${rootArgument}`)
+  }
+} catch {
+  fail(`cannot resolve root: ${rootArgument}`)
+}
+
+const portArgument = args.indexOf('--port')
+const portValue = portArgument === -1 ? undefined : args[portArgument + 1]
+if (portArgument !== -1 && portValue === undefined) {
+  fail('--port requires a value')
+}
+const PORT = portValue === undefined ? 0 : Number(portValue)
+if (!Number.isInteger(PORT) || PORT < 0 || PORT > 65_535) {
+  fail(`invalid port: ${portValue ?? ''}`)
+}
 const MERMAID_DIR = dirname(Bun.resolveSync('mermaid/package.json', import.meta.dir))
 const label = (name: string) => name.replace(/\.md$/, '')
 const unquote = (value: string) =>
@@ -217,7 +227,7 @@ const toDocMeta = (full: string, path: string, kind?: DocNode['kind']): DocMeta 
   }
 }
 
-const listPlans = (dir: string, worktree: string, kind: 'plan' | 'phase' = 'plan'): DocMeta[] => {
+const listPlans = (dir: string, root: string, kind: 'plan' | 'phase' = 'plan'): DocMeta[] => {
   if (!existsSync(dir)) {
     return []
   }
@@ -228,12 +238,12 @@ const listPlans = (dir: string, worktree: string, kind: 'plan' | 'phase' = 'plan
       const stats = lstatSync(full)
       if (!stats.isSymbolicLink()) {
         if (stats.isDirectory()) {
-          plans.push(...listPlans(full, worktree, 'phase'))
+          plans.push(...listPlans(full, root, 'phase'))
         } else if (entry.endsWith('.md')) {
-          const realFile = realFileInWorktree(full, worktree)
+          const realFile = realFileInRoot(full, root)
           if (realFile) {
             // Folder plan: index.md owns status and checkboxes, siblings are phases.
-            plans.push(toDocMeta(realFile, relative(worktree, full), kind === 'phase' && entry === 'index.md' ? 'plan' : kind))
+            plans.push(toDocMeta(realFile, relative(root, full), kind === 'phase' && entry === 'index.md' ? 'plan' : kind))
           }
         }
       }
@@ -244,154 +254,36 @@ const listPlans = (dir: string, worktree: string, kind: 'plan' | 'phase' = 'plan
   return plans
 }
 
-const isGitRepo = (dir: string) => existsSync(join(dir, '.git'))
-
-const worktreesOf = (repo: string): { path: string; main: boolean; label: string }[] => {
-  let output = ''
-  try {
-    output = execFileSync('git', ['-C', repo, 'worktree', 'list', '--porcelain'], {
-      encoding: 'utf8',
-    })
-  } catch {
-    return [{ label: 'main', main: true, path: repo }]
-  }
-  const trees: { path: string; branch?: string }[] = []
-  for (const block of output.trim().split('\n\n')) {
-    const path = /^worktree (?<path>.+)$/m.exec(block)?.groups?.path
-    const branch = /^branch (?<branch>.+)$/m.exec(block)?.groups?.branch?.replace('refs/heads/', '')
-    if (path) {
-      trees.push({ branch, path })
-    }
-  }
-  return trees.map((tree, treeIndex) => ({
-    label: tree.branch ?? basename(tree.path),
-    main: treeIndex === 0,
-    path: tree.path,
-  }))
-}
-
-const commonDir = (repo: string): string => {
-  try {
-    const output = execFileSync('git', ['-C', repo, 'rev-parse', '--git-common-dir'], {
-      encoding: 'utf8',
-    }).trim()
-    return resolve(repo, output)
-  } catch {
-    return resolve(repo)
-  }
-}
-
-const toProject = (dir: string): Project => {
-  const trees = worktreesOf(dir)
-  const worktrees: Worktree[] = trees.map((worktree) => ({
-    main: worktree.main,
-    name: worktree.label,
-    path: worktree.path,
-  }))
-  const mainPath = trees.find((tree) => tree.main)?.path ?? dir
-  return { name: basename(mainPath), path: mainPath, worktrees }
-}
-
-const MAX_DEPTH = 4
-
-const findRepos = (dir: string, depth: number, output: string[]) => {
-  if (depth > MAX_DEPTH) {
-    return
-  }
-  if (isGitRepo(dir)) {
-    output.push(dir)
-    return
-  }
-  for (const entry of readdirSync(dir)) {
-    if (!entry.startsWith('.') && entry !== 'node_modules') {
-      const child = join(dir, entry)
-      try {
-        if (statSync(child).isDirectory()) {
-          findRepos(child, depth + 1, output)
-        }
-      } catch {
-        // Ignore entries which disappear during traversal.
-      }
-    }
-  }
-}
-
-const discover = (): Project[] => {
-  const dirs: string[] = []
-  const seen = new Set<string>()
-  const projects: Project[] = []
-  findRepos(WORKSPACE_ROOT, 0, dirs)
-  for (const projectPath of EXTRA_PROJECTS) {
-    const dir = resolve(projectPath)
-    if (existsSync(dir) && !dirs.includes(dir)) {
-      dirs.push(dir)
-    }
-  }
-
-  for (const dir of dirs) {
-    const key = commonDir(dir)
-    if (!seen.has(key)) {
-      seen.add(key)
-      projects.push(toProject(dir))
-    }
-  }
-  projects.sort((first, second) => first.name.localeCompare(second.name))
-  return projects
-}
-
-const TTL = 5000
-
-const scan = (): Project[] => {
-  if (!cache || Date.now() - cache.at > TTL) {
-    const projects = discover()
-    cache = { at: Date.now(), projects }
-  }
-  return cache.projects
-}
-
-// A worktree path from discovery is the only root a request may read under.
-const worktreeAt = (path: string): string | undefined => {
-  const wantedPath = resolve(path)
-  for (const project of scan()) {
-    for (const worktree of project.worktrees) {
-      if (resolve(worktree.path) === wantedPath) {
-        return resolve(worktree.path)
-      }
-    }
-  }
-  return undefined
-}
-
 const SPEC = /\.(?<kind>spec|discovery|examples)\.mdx?$/
 
-const contained = (file: string, worktree: string) => {
-  const relativePath = relative(worktree, file)
+const contained = (file: string, root: string) => {
+  const relativePath = relative(root, file)
   return Boolean(relativePath) && relativePath !== '..' && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath)
 }
 
-const isAllowed = (file: string, worktree: string) => {
-  if (!contained(file, worktree)) {
+const isAllowed = (file: string, root: string) => {
+  if (!contained(file, root)) {
     return false
   }
-  const relativePath = relative(worktree, file)
+  const relativePath = relative(root, file)
   return (relativePath.startsWith(`.plan${sep}`) && relativePath.endsWith('.md')) || SPEC.test(relativePath)
 }
 
-const realFileInWorktree = (file: string, worktree: string): string | undefined => {
+const realFileInRoot = (file: string, root: string): string | undefined => {
   try {
     const realFile = realpathSync(file)
-    return contained(realFile, realpathSync(worktree)) ? realFile : undefined
+    return contained(realFile, realpathSync(root)) ? realFile : undefined
   } catch {
     return undefined
   }
 }
 
-const specPaths = (worktree: string): string[] => {
+const specPaths = (root: string): string[] => {
   let output = ''
   try {
     output = execFileSync(
       'git',
-      ['-C', worktree, 'ls-files', '--', '*.spec.md', '*.spec.mdx', '*.discovery.md', '*.discovery.mdx', '*.examples.md', '*.examples.mdx'],
+      ['-C', root, 'ls-files', '--', '*.spec.md', '*.spec.mdx', '*.discovery.md', '*.discovery.mdx', '*.examples.md', '*.examples.mdx'],
       { encoding: 'utf8' }
     )
   } catch {
@@ -403,16 +295,16 @@ const specPaths = (worktree: string): string[] => {
     .toSorted((first, second) => first.localeCompare(second))
 }
 
-const listSpecs = (worktree: string): DocMeta[] =>
-  specPaths(worktree).flatMap((path) => {
-    const full = realFileInWorktree(join(worktree, path), worktree)
+const listSpecs = (root: string): DocMeta[] =>
+  specPaths(root).flatMap((path) => {
+    const full = realFileInRoot(join(root, path), root)
     return full ? [toDocMeta(full, path)] : []
   })
 
-const gitIndexPath = (worktree: string): string | undefined => {
+const gitIndexPath = (root: string): string | undefined => {
   try {
-    const output = execFileSync('git', ['-C', worktree, 'rev-parse', '--git-path', 'index'], { encoding: 'utf8' }).trim()
-    return resolve(worktree, output)
+    const output = execFileSync('git', ['-C', root, 'rev-parse', '--git-path', 'index'], { encoding: 'utf8' }).trim()
+    return resolve(root, output)
   } catch {
     return undefined
   }
@@ -423,10 +315,10 @@ const isGitIndexEntry = (filename: string | Buffer | null) => {
   return entry === 'index' || entry === 'index.lock'
 }
 
-const eventsResponse = (request: Request, worktree: string) => {
+const eventsResponse = (request: Request, root: string) => {
   const dirs = new Set<string>()
-  const gitIndex = gitIndexPath(worktree)
-  const planDir = join(worktree, '.plan')
+  const gitIndex = gitIndexPath(root)
+  const planDir = join(root, '.plan')
   const watchers: ReturnType<typeof watch>[] = []
   const stream = new ReadableStream({
     start(controller) {
@@ -442,8 +334,8 @@ const eventsResponse = (request: Request, worktree: string) => {
         }, 100)
       }
       const watchDocumentDirectories = () => {
-        for (const directory of specPaths(worktree)
-          .map((path) => resolve(worktree, path, '..'))
+        for (const directory of specPaths(root)
+          .map((path) => resolve(root, path, '..'))
           .filter((path) => existsSync(path))) {
           if (!dirs.has(directory)) {
             try {
@@ -496,10 +388,10 @@ const eventsResponse = (request: Request, worktree: string) => {
   return new Response(stream, { headers: { 'cache-control': 'no-cache', 'content-type': 'text/event-stream' } })
 }
 
-const resolvedDocumentFile = (file: string, worktree: string) => {
+const resolvedDocumentFile = (file: string, root: string) => {
   try {
     const realFile = realpathSync(file)
-    return { file: contained(realFile, realpathSync(worktree)) ? realFile : undefined, forbidden: !contained(realFile, realpathSync(worktree)) }
+    return { file: contained(realFile, realpathSync(root)) ? realFile : undefined, forbidden: !contained(realFile, realpathSync(root)) }
   } catch {
     return { file: undefined, forbidden: false }
   }
@@ -515,15 +407,15 @@ const readDocumentSource = async (file: string) => {
   }
 }
 
-const documentResponse = async (worktree: string, path: string) => {
+const documentResponse = async (root: string, path: string) => {
   if (path.includes('\0') || isAbsolute(path)) {
     return new Response('forbidden', { status: 403 })
   }
-  const file = resolve(worktree, path)
-  if (!isAllowed(file, worktree)) {
+  const file = resolve(root, path)
+  if (!isAllowed(file, root)) {
     return new Response('forbidden', { status: 403 })
   }
-  const resolved = resolvedDocumentFile(file, worktree)
+  const resolved = resolvedDocumentFile(file, root)
   if (resolved.forbidden) {
     return new Response('forbidden', { status: 403 })
   }
@@ -537,14 +429,14 @@ const documentResponse = async (worktree: string, path: string) => {
   }
   const { source, stamp } = sourceAndStamp
   const { mtimeMs, size } = stamp
-  const result = cachedRender(realFile, { mtimeMs, size }, () => renderDoc({ path: relative(worktree, realFile), source: bodyBelowHeader(source) }))
+  const result = cachedRender(realFile, { mtimeMs, size }, () => renderDoc({ path: relative(root, realFile), source: bodyBelowHeader(source) }))
   return Response.json({
     degraded: result.degraded ?? null,
     hasMermaid: result.hasMermaid,
     html: result.html,
     meta: metaOf(source, file),
     path: file,
-    repoPath: relative(worktree, file),
+    rootPath: relative(root, file),
     toc: result.toc,
   })
 }
@@ -581,42 +473,48 @@ const mermaidResponse = async (assetPath: string) => {
 
 await ready
 
-const _server = Bun.serve({
-  development: process.env.NODE_ENV !== 'production',
-  async fetch(request) {
-    const url = new URL(request.url)
-    const worktree = worktreeAt(url.searchParams.get('wt') ?? '')
+const serve = (port: number) =>
+  Bun.serve({
+    development: process.env.NODE_ENV !== 'production',
+    async fetch(request) {
+      const url = new URL(request.url)
 
-    if (url.pathname === '/api/projects') {
-      return Response.json({ projects: scan(), root: WORKSPACE_ROOT })
-    }
-
-    if (url.pathname === '/api/docs') {
-      if (!worktree) {
-        return new Response('forbidden', { status: 403 })
+      if (url.pathname === '/api/docs') {
+        return Response.json({
+          plans: buildTree(listPlans(join(ROOT, '.plan'), ROOT), { flat: true }),
+          specs: buildTree(listSpecs(ROOT)),
+        })
       }
-      return Response.json({
-        plans: buildTree(listPlans(join(worktree, '.plan'), worktree), { flat: true }),
-        specs: buildTree(listSpecs(worktree)),
-      })
-    }
 
-    if (url.pathname === '/api/doc') {
-      return worktree ? documentResponse(worktree, url.searchParams.get('path') ?? '') : new Response('forbidden', { status: 403 })
-    }
+      if (url.pathname === '/api/doc') {
+        return documentResponse(ROOT, url.searchParams.get('path') ?? '')
+      }
 
-    if (url.pathname === '/api/events') {
-      return worktree ? eventsResponse(request, worktree) : new Response('forbidden', { status: 403 })
-    }
+      if (url.pathname === '/api/events') {
+        return eventsResponse(request, ROOT)
+      }
 
-    if (request.method === 'GET' && url.pathname.startsWith('/assets/mermaid/')) {
-      return mermaidResponse(url.pathname.slice('/assets/mermaid/'.length))
-    }
+      if (request.method === 'GET' && url.pathname.startsWith('/assets/mermaid/')) {
+        return mermaidResponse(url.pathname.slice('/assets/mermaid/'.length))
+      }
 
-    return new Response('not found', { status: 404 })
-  },
-  // /api/events is a long-lived SSE stream with no traffic between file changes.
-  idleTimeout: 0,
-  port: PORT,
-  routes: { '/': index },
-})
+      return new Response('not found', { status: 404 })
+    },
+    hostname: '127.0.0.1',
+    // /api/events is a long-lived SSE stream with no traffic between file changes.
+    idleTimeout: 0,
+    port,
+    routes: { '/': index },
+  })
+
+const server = (() => {
+  try {
+    return serve(PORT)
+  } catch (error) {
+    if (PORT !== 0 && typeof error === 'object' && error !== null && 'code' in error && error.code === 'EADDRINUSE') {
+      return serve(0)
+    }
+    throw error
+  }
+})()
+process.stdout.write(`plan-viewer listening on ${server.url.origin}\n`)

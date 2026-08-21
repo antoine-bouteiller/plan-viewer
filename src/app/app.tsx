@@ -7,12 +7,11 @@ import { CopyChip } from '@/components/ui/copy-chip'
 import { LoadingIcon, SearchIcon } from '@/components/ui/icons'
 import { Meter } from '@/components/ui/meter'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { ratio, statusToken, statusTone, type Counts, type Doc, type DocNode, type Docs, type Project, type Tab } from '@/lib/plan'
+import { ratio, statusToken, statusTone, type Counts, type Doc, type DocNode, type Docs, type Tab } from '@/lib/plan'
 import { useUrlState } from '@/lib/url-state'
 import { cn } from '@/lib/utils'
 
 interface DocsState {
-  wt: string
   docs: Docs
   error: string | null
 }
@@ -68,49 +67,45 @@ const onArticleClick = (event: React.MouseEvent<HTMLElement>, onOpenDoc: (path: 
   })
 }
 
-const useDocs = (wtPath: string | undefined, reloads: number) => {
+const useDocs = (reloads: number) => {
   const [loaded, setLoaded] = useState<DocsState | null>(null)
-  const current = loaded?.wt === wtPath ? loaded : null
 
   useEffect(() => {
-    if (!wtPath) {
-      return undefined
-    }
     let alive = true
-    fetch(`/api/docs?wt=${encodeURIComponent(wtPath)}`)
+    fetch('/api/docs')
       .then((response) => (response.ok ? response.json() : failed(response)))
       .then((data: Docs) => {
         if (alive) {
-          setLoaded({ docs: data, error: null, wt: wtPath })
+          setLoaded({ docs: data, error: null })
         }
       })
       .catch((error: Error) => {
         if (alive) {
-          setLoaded({ docs: NO_DOCS, error: error.message, wt: wtPath })
+          setLoaded({ docs: NO_DOCS, error: error.message })
         }
       })
     return () => {
       alive = false
     }
-  }, [wtPath, reloads])
+  }, [reloads])
 
-  return { docs: current?.docs ?? NO_DOCS, error: current?.error ?? null }
+  return { docs: loaded?.docs ?? NO_DOCS, error: loaded?.error ?? null }
 }
 
-const useDoc = (wtPath: string | undefined, active: string | null, reloads: number) => {
+const useDoc = (active: string | null, reloads: number) => {
   const [loaded, setLoaded] = useState<DocState | null>(null)
   const opened = useRef('')
-  const key = wtPath && active ? `${wtPath}|${active}` : ''
+  const key = active ?? ''
   const current = loaded?.key === key ? loaded : null
 
   useEffect(() => {
-    if (!wtPath || !active) {
+    if (!active) {
       return undefined
     }
     const silent = opened.current === key
     opened.current = key
     let alive = true
-    fetch(`/api/doc?wt=${encodeURIComponent(wtPath)}&path=${encodeURIComponent(active)}`)
+    fetch(`/api/doc?path=${encodeURIComponent(active)}`)
       .then((response) => (response.ok ? response.json() : failed(response)))
       .then((data: Doc) => {
         if (!alive) {
@@ -129,7 +124,7 @@ const useDoc = (wtPath: string | undefined, active: string | null, reloads: numb
     return () => {
       alive = false
     }
-  }, [wtPath, active, key, reloads])
+  }, [active, key, reloads])
 
   return {
     doc: current?.doc ?? null,
@@ -138,27 +133,13 @@ const useDoc = (wtPath: string | undefined, active: string | null, reloads: numb
   }
 }
 
-const useProjects = () => {
-  const [projects, setProjects] = useState<Project[]>([])
-  useEffect(() => {
-    fetch('/api/projects')
-      .then((response) => response.json())
-      .then((data) => setProjects(data.projects))
-      .catch(() => setProjects([]))
-  }, [])
-  return projects
-}
-
-const useReloads = (wtPath: string | undefined) => {
+const useReloads = () => {
   const [reloads, setReloads] = useState(0)
   useEffect(() => {
-    if (!wtPath) {
-      return undefined
-    }
-    const events = new EventSource(`/api/events?wt=${encodeURIComponent(wtPath)}`)
+    const events = new EventSource('/api/events')
     events.addEventListener('message', () => setReloads((count) => count + 1))
     return () => events.close()
-  }, [wtPath])
+  }, [])
   return reloads
 }
 
@@ -176,11 +157,11 @@ const Metric = ({ label, counts }: { label: string; counts: Counts }) => {
   )
 }
 
-const DocMeta = ({ doc, origin, activePlan }: { doc: Doc; origin: string | null; activePlan: DocNode | null }) => (
+const DocMeta = ({ doc, activePlan }: { doc: Doc; activePlan: DocNode | null }) => (
   <>
     <div className="text-muted mt-2 text-[13px]">
-      {origin ?? 'plan'}
-      {activePlan && activePlan.path !== doc.repoPath ? ` · ${activePlan.name}` : ''}
+      plan
+      {activePlan && activePlan.path !== doc.rootPath ? ` · ${activePlan.name}` : ''}
       {doc.meta.phases.length ? ` · ${doc.meta.phases.length} phases` : ''}
       {doc.meta.legacy ? ' · legacy format' : ''}
     </div>
@@ -193,16 +174,12 @@ const DocMeta = ({ doc, origin, activePlan }: { doc: Doc; origin: string | null;
 const DocumentPane = ({
   doc,
   error,
-  origin,
   activePlan,
-  hasProject,
   onOpenDoc,
 }: {
   doc: Doc | null
   error: string | null
-  origin: string | null
   activePlan: DocNode | null
-  hasProject: boolean
   onOpenDoc: (path: string) => void
 }) => {
   const article = useRef<HTMLElement>(null)
@@ -265,7 +242,7 @@ const DocumentPane = ({
     return <p className="text-muted p-10 font-mono text-[13px]">Could not load this plan: {error}</p>
   }
   if (!doc) {
-    return <p className="text-muted p-10">{hasProject ? 'Select a document.' : 'Select a project.'}</p>
+    return <p className="text-muted p-10">Select a document.</p>
   }
 
   return (
@@ -282,9 +259,9 @@ const DocumentPane = ({
         </div>
 
         <div className="text-muted mt-3 flex flex-wrap items-center gap-3 text-[13px]">
-          <DocMeta doc={doc} origin={origin} activePlan={activePlan} />
+          <DocMeta doc={doc} activePlan={activePlan} />
           <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate font-mono text-[12px]">{doc.repoPath}</span>
+            <span className="truncate font-mono text-[12px]">{doc.rootPath}</span>
             <CopyChip label="path" value={doc.path} title={doc.path} />
             <CopyChip label="name" value={doc.path.split('/').pop() ?? ''} />
           </span>
@@ -312,26 +289,16 @@ const DocumentPane = ({
 export const App = () => {
   const [url, setUrl] = useUrlState()
   const [query, setQuery] = useState('')
-  const projects = useProjects()
-  const project = projects.find((item) => item.name === url.project)
-  const worktree = project?.worktrees.find((item) => item.path === url.wt)
-  const wtPath = worktree?.path
   const tab: Tab = url.tab === 'specs' ? 'specs' : 'plans'
   const active = url.doc ?? null
-  const reloads = useReloads(wtPath)
-  const { docs, error: docsError } = useDocs(wtPath, reloads)
-  const { doc, pending, error: docError } = useDoc(wtPath, active, reloads)
+  const reloads = useReloads()
+  const { docs, error: docsError } = useDocs(reloads)
+  const { doc, pending, error: docError } = useDoc(active, reloads)
   const openPlan = (path: string) => setUrl({ doc: path })
   const listed = tab === 'specs' ? docs.specs : docs.plans
   const needle = query.trim().toLowerCase()
   const filtered = useMemo(() => (needle ? matchingDocuments(listed, needle) : []), [listed, needle])
   const activePlan = useMemo(() => [...docs.plans, ...docs.specs].find((node) => findNode(node, active)) ?? null, [docs, active])
-  const origin = project && worktree ? `${project.name} · ${worktree.name}` : null
-
-  useEffect(() => {
-    document.title = project ? `Plans — ${project.name}` : 'Plans'
-  }, [project])
-
   return (
     <div className="flex h-screen">
       <aside className="flex w-[280px] shrink-0 flex-col border-r">
@@ -354,24 +321,12 @@ export const App = () => {
 
         <nav aria-label="Plans" className="flex-1 overflow-y-auto p-3">
           <PlanList
-            projects={projects}
-            project={project}
-            worktree={worktree}
             tab={tab}
             nodes={listed}
             filteredNodes={filtered}
             filtering={Boolean(needle)}
             active={active}
             onOpen={openPlan}
-            onProject={(name) => {
-              const picked = projects.find((item) => item.name === name)
-              setUrl({
-                doc: undefined,
-                project: name,
-                wt: (picked?.worktrees.find((item) => item.main) ?? picked?.worktrees[0])?.path,
-              })
-            }}
-            onWorktree={(path) => setUrl({ doc: undefined, wt: path })}
             onTab={(next) => setUrl({ doc: undefined, tab: next })}
           />
         </nav>
@@ -389,14 +344,7 @@ export const App = () => {
             <span className="font-mono text-[13px]">Loading…</span>
           </div>
         ) : (
-          <DocumentPane
-            doc={doc}
-            error={docError ?? docsError}
-            origin={origin}
-            activePlan={activePlan}
-            hasProject={Boolean(project)}
-            onOpenDoc={openPlan}
-          />
+          <DocumentPane doc={doc} error={docError ?? docsError} activePlan={activePlan} onOpenDoc={openPlan} />
         )}
       </main>
     </div>
