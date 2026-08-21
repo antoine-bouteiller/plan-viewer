@@ -21,8 +21,15 @@ or worktrees.
 
 ## Use with pi
 
-This repository declares a pi extension. With pi installed, install a local checkout by absolute
-path (or a path relative to the directory where the command is run):
+This repository declares a pi extension. With pi installed, install it straight from the
+repository:
+
+```bash
+pi install git:github.com/antoine-bouteiller/plan-viewer
+```
+
+Or install a local checkout by absolute path (or a path relative to the directory where the command
+is run):
 
 ```bash
 pi install /path/to/plan-viewer
