@@ -1,8 +1,13 @@
+import * as fs from 'node:fs'
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
 import { lock } from 'proper-lockfile'
+
+// Proper-lockfile stores its mtime precision on this object. Keep it out of
+// Jiti's module proxy, whose non-configurable fs exports cannot accept that.
+const lockFs = { ...fs }
 
 export interface ViewerEntry {
   port: number
@@ -101,6 +106,7 @@ const readConfig = async (path: string): Promise<ViewersConfig> => {
 const acquireLock = async (path: string) => {
   await mkdir(dirname(path), { recursive: true })
   return lock(path, {
+    fs: lockFs,
     lockfilePath: `${path}.lock`,
     realpath: false,
     retries: {

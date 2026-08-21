@@ -1,69 +1,57 @@
 # plan-viewer
 
-Browses the plans (`.plan/*.md`) and specs (`*.spec.md`, `*.spec.mdx`) of one selected project
-and git worktree.
+A local browser for the plans (`.plan/*.md`) and specs (`*.spec.md`, `*.spec.mdx`) in one project root or worktree.
+
+## Run a project or worktree
+
+Install this repository's dependencies, then pass the project or worktree root explicitly:
 
 ```bash
 bun install
-WORKSPACE_ROOT=/path/to/workspace \
-EXTRA_PROJECTS=/some/other/repo:/another/repo \
-bun src/server.ts
+bun src/server.ts /path/to/project-or-worktree
 ```
 
-Everything lives under `src/`: `src/server.ts` (Bun server + `src/index.html`), `src/render/`
-(markdown pipeline), `src/corpus/` (tree model) and `src/app/` (React + Tailwind v4 frontend,
-bundled on the fly by Bun via the `src/index.html` import). Use `bun dev` for hot reload.
+`bun start` and `bun dev` use the current directory as the root; `bun dev` enables hot reload.
+The server prints its loopback URL. To choose a port, pass `--port <number>` after the root;
+otherwise the OS chooses an available port.
 
-- `WORKSPACE_ROOT` (required): git repos found under it become projects.
-- `EXTRA_PROJECTS` (optional): colon-separated repo paths, always included.
-- `PORT` (optional): default `4321`.
+Use a checkout or worktree as the root. Plans are read from its `.plan/` directory and specs are
+its tracked `*.spec.md` and `*.spec.mdx` files. The viewer does not discover sibling repositories
+or worktrees.
 
-Pick a project and a worktree first: `/api/projects` only discovers repos and worktrees, and
-documents are listed per worktree by `/api/docs?wt=` — plans from `.plan/`, specs from
-`git ls-files -- '*.spec.md' '*.spec.mdx'` (tracked files only). A document is read through
-`/api/doc?wt=&path=`, which refuses anything outside that worktree.
+## Use with pi
 
-View state lives in the URL (`?project=&wt=&tab=&doc=`), so a refresh or a shared link restores
-the same view. Live-reloads on changes in the selected worktree (SSE, `/api/events?wt=`).
+This repository declares a pi extension. With pi installed, install a local checkout by absolute
+path (or a path relative to the directory where the command is run):
 
-Three full-height columns, each scrolling on its own:
+```bash
+pi install /path/to/plan-viewer
+```
 
-- **Plans** — project and worktree selectors, `Plans | Specs` tabs, then that worktree's
-  documents with their status. Multi-file plans appear once, as their main file. Carries the
-  app mark, theme selector and filter.
-- **Files / Sections** — the structure of the selected plan: its phase files when it is a
-  folder plan, with the open file expanded into its sections. Single-file plans show
-  sections directly.
-- **The page** — title, status, meters and path live inside the document itself and scroll
-  with it; only the 3px status accent stays pinned at the top.
+Start pi in a trusted project or worktree. The extension starts a viewer for pi's current working
+directory and announces its URL. Run `/plan-viewer` in that session to open the announced viewer
+again.
+
+## Routes
+
+- `GET /` — the viewer application.
+- `GET /api/docs` — plan and spec trees for the supplied root.
+- `GET /api/doc?path=<relative-path>` — a rendered document under that root.
+- `GET /api/events` — server-sent events for changes below that root.
+- `GET /assets/mermaid/<file>` — Mermaid JavaScript assets used by rendered diagrams.
+
+Document paths outside the selected root are rejected.
 
 ## Plan format
 
-The server parses the format written by the `create-plan` skill
-(`~/.claude/skills/create-plan/SKILL.md`, mirroring `writing-spec`):
+The server parses the format written by the `create-plan` skill:
 
 - YAML frontmatter — `title`, `status`, `author`, `date`, `related`.
-- Status vocabulary `draft | ready | in-progress | blocked | done`; anything else renders
-  with a dashed neutral chip.
-- Progress comes from checkboxes: `## Acceptance criteria` feeds the `AC` meter,
-  `## Implementation` feeds the `T` meter. Phases are the `###` headings under
-  `## Implementation`.
-- Folder plans (`.plan/<slug>/`) treat `index.md` as the only status and checkbox
-  authority; sibling files are listed under it as phases and carry no status of their own.
-- `PREFIX-NNN` IDs (`G`, `NG`, `AC`, `T`, `KD`, `OQ`, and the spec namespaces) render as
-  colored chips; clicking one copies the ID.
+- Status vocabulary `draft | ready | in-progress | blocked | done`; other values render as neutral.
+- `## Acceptance criteria` supplies the AC meter and `## Implementation` supplies the task meter.
+  `###` headings under Implementation are phases.
+- Folder plans use `.plan/<slug>/index.md` as the status and checkbox authority; sibling files are
+  phases.
 
-Plans predating the format still render: the title falls back to the H1, the status to a
-`**Status:**` line, and task counts to `## Steps`. Those are labelled `legacy format` in
-the header strip.
-
-## Design
-
-The look follows `phoenix/.claude/spec-ide` — same token names and values (`--bg`,
-`--fg`, `--muted`, `--border`, `--accent`, status and xref palettes), the sticky
-status accent and metadata strip, and a 96ch article column.
-
-Theme is light / dark / system via `data-theme` on `<html>`, persisted under
-`plan-viewer.theme`, with an inline bootstrap in `src/index.html` to avoid a flash.
-Fonts prefer locally installed Inter and JetBrains Mono, falling back to the system
-stacks — nothing is fetched over the network.
+Older plans still render: title falls back to the H1, status to a `**Status:**` line, and task
+counts to `## Steps`.

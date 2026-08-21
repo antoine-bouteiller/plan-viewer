@@ -1,6 +1,7 @@
 /* eslint-disable complexity, init-declarations, max-params, no-await-in-loop, typescript/consistent-type-definitions */
 import { realpath, stat } from 'node:fs/promises'
-import { join, resolve as pathResolve } from 'node:path'
+import { dirname, join, resolve as pathResolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { updateEntry, type ViewerEntry } from './registry.ts'
 
@@ -16,7 +17,7 @@ const announcePrefix = 'plan-viewer listening on '
 const startupTimeoutMs = 15_000
 const pollIntervalMs = 50
 const stderrLimit = 4096
-const packageRoot = pathResolve(import.meta.dir, '../..')
+const packageRoot = pathResolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
 const addHolder = (entry: ViewerEntry, holder: number): ViewerEntry =>
   entry.holders.includes(holder) ? entry : { ...entry, holders: [...entry.holders, holder] }
