@@ -4,6 +4,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 
 import { buildTree, type DocMeta, type DocNode } from './corpus/tree.ts'
 import index from './index.html'
+import { readEntry, updateEntry } from './launcher/registry.ts'
 import { cachedRender } from './render/cache'
 import { ready, renderDoc } from './render/index'
 
@@ -518,3 +519,73 @@ const server = (() => {
   }
 })()
 process.stdout.write(`plan-viewer listening on ${server.url.origin}\n`)
+
+if (process.env.PLAN_VIEWER_MANAGED === '1') {
+  let stopping = false
+  let operations = Promise.resolve()
+
+  const queue = (operation: () => Promise<void>) => {
+    operations = operations.then(operation, operation)
+    return operations
+  }
+
+  const clearOwnedRun = () => updateEntry(ROOT, (entry) => (entry?.pid === process.pid ? { holders: [], port: entry.port } : entry))
+
+  const shouldStopForEmptyRun = async () => {
+    let shouldStop = true
+    await updateEntry(ROOT, (entry) => {
+      if (entry?.pid === process.pid && entry.holders.length > 0) {
+        shouldStop = false
+        return entry
+      }
+      return entry?.pid === process.pid ? { holders: [], port: entry.port } : entry
+    })
+    return shouldStop
+  }
+
+  const stop = async () => {
+    try {
+      await clearOwnedRun()
+    } finally {
+      process.exit(0)
+    }
+  }
+
+  const tick = () => {
+    void queue(async () => {
+      if (stopping) {
+        return
+      }
+
+      let entry: Awaited<ReturnType<typeof readEntry>> = undefined
+      try {
+        entry = await readEntry(ROOT)
+      } catch {
+        await stop()
+        return
+      }
+
+      if (entry?.pid !== process.pid) {
+        await stop()
+        return
+      }
+
+      if (entry.holders.length === 0 && (await shouldStopForEmptyRun())) {
+        process.exit(0)
+      }
+    })
+  }
+
+  const interval = setInterval(tick, 5000)
+  const shutdown = () => {
+    if (stopping) {
+      return
+    }
+    stopping = true
+    clearInterval(interval)
+    void queue(stop)
+  }
+
+  process.on('SIGINT', shutdown)
+  process.on('SIGTERM', shutdown)
+}
