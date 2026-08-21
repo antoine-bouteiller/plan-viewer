@@ -3,6 +3,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSyn
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 import { buildTree, type DocMeta, type DocNode } from './corpus/tree.ts'
+import { changedSpecPaths } from './git.ts'
 import index from './index.html'
 import { readEntry, updateEntry } from './launcher/registry.ts'
 import { projectOf } from './project.ts'
@@ -534,6 +535,7 @@ const serve = (port: number) =>
           return new Response('forbidden', { status: 403 })
         }
         return Response.json({
+          changedSpecs: changedSpecPaths(worktree),
           plans: buildTree(listPlans(join(worktree, '.plan'), worktree), { flat: true }),
           project: PROJECT.name,
           specs: buildTree(listSpecs(worktree)),

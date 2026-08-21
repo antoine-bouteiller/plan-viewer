@@ -23,7 +23,7 @@ interface DocState {
   error: string | null
 }
 
-const NO_DOCS: Docs = { plans: [], project: '', specs: [] }
+const NO_DOCS: Docs = { changedSpecs: null, plans: [], project: '', specs: [] }
 
 const failed = (response: Response) => Promise.reject(new Error(`${response.status} ${response.statusText}`))
 
@@ -36,10 +36,16 @@ const isDarkTheme = () => {
   return mode ? mode === 'dark' : prefersDark().matches
 }
 
-const matchingDocuments = (nodes: DocNode[], needle: string): DocNode[] =>
+const changedSpecFilter = (tab: Tab, enabled: boolean, paths: Set<string>) => (tab === 'specs' && enabled ? paths : undefined)
+
+const matchingDocuments = (nodes: DocNode[], needle: string, paths?: Set<string>): DocNode[] =>
   nodes.flatMap((node) => [
-    ...(node.path && (node.name.toLowerCase().includes(needle) || node.path.toLowerCase().includes(needle)) ? [node] : []),
-    ...matchingDocuments(node.children ?? [], needle),
+    ...(node.path &&
+    (!needle || node.name.toLowerCase().includes(needle) || node.path.toLowerCase().includes(needle)) &&
+    (!paths || paths.has(node.path))
+      ? [node]
+      : []),
+    ...matchingDocuments(node.children ?? [], needle, paths),
   ])
 
 const findNode = (node: DocNode, path: string | null): DocNode | null => {
@@ -312,6 +318,7 @@ const DocumentPane = ({
 export const App = () => {
   const [url, setUrl] = useUrlState()
   const [query, setQuery] = useState('')
+  const [changedOnly, setChangedOnly] = useState(false)
   const projects = useProjects()
   const [project] = projects
   const worktree = project?.worktrees.find((item) => item.path === url.wt)
@@ -338,7 +345,10 @@ export const App = () => {
   const openPlan = (path: string) => setUrl({ doc: path })
   const listed = tab === 'specs' ? docs.specs : docs.plans
   const needle = query.trim().toLowerCase()
-  const filtered = useMemo(() => (needle ? matchingDocuments(listed, needle) : []), [listed, needle])
+  const changedSpecs = useMemo(() => new Set(docs.changedSpecs), [docs.changedSpecs])
+  const changedFilter = changedSpecFilter(tab, changedOnly, changedSpecs)
+  const filtering = Boolean(needle || changedFilter)
+  const filtered = useMemo(() => matchingDocuments(listed, needle, changedFilter), [listed, needle, changedFilter])
   const activePlan = useMemo(() => [...docs.plans, ...docs.specs].find((node) => findNode(node, active)) ?? null, [docs, active])
   return (
     <div className="flex h-screen">
@@ -350,14 +360,31 @@ export const App = () => {
           <ThemeSelector />
         </header>
 
-        <div className="relative border-b px-3 py-2">
-          <SearchIcon className="text-muted absolute top-1/2 left-5 size-3.5 -translate-y-1/2" />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Filter plans…"
-            className="bg-elevated h-8 w-full rounded-md border pr-2 pl-7 text-[13px] outline-none"
-          />
+        <div className="flex gap-2 border-b px-3 py-2">
+          <div className="relative min-w-0 flex-1">
+            <SearchIcon className="text-muted absolute top-1/2 left-2 size-3.5 -translate-y-1/2" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={`Filter ${tab}…`}
+              className="bg-elevated h-8 w-full rounded-md border pr-2 pl-7 text-[13px] outline-none"
+            />
+          </div>
+          <button
+            hidden={tab !== 'specs'}
+            type="button"
+            disabled={docs.changedSpecs === null}
+            aria-label="Show only specs changed from remote main"
+            aria-pressed={changedOnly}
+            title="Show only specs changed from remote main"
+            onClick={() => setChangedOnly((value) => !value)}
+            className={cn(
+              'h-8 rounded-md border px-2 font-mono text-[11px] font-medium disabled:cursor-not-allowed disabled:opacity-50',
+              changedOnly ? 'border-accent bg-accent-soft text-accent' : 'bg-elevated text-muted'
+            )}
+          >
+            Diff
+          </button>
         </div>
 
         <nav aria-label="Plans" className="flex-1 overflow-y-auto p-3">
@@ -367,7 +394,7 @@ export const App = () => {
             tab={tab}
             nodes={listed}
             filteredNodes={filtered}
-            filtering={Boolean(needle)}
+            filtering={filtering}
             active={active}
             onOpen={openPlan}
             onWorktree={(path) => setUrl({ doc: undefined, wt: path })}

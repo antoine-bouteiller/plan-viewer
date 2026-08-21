@@ -40,6 +40,7 @@ export interface Project {
 }
 
 export interface Docs {
+  changedSpecs: string[] | null
   project: string
   plans: DocNode[]
   specs: DocNode[]
