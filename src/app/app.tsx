@@ -36,7 +36,7 @@ const isDarkTheme = () => {
   return mode ? mode === 'dark' : prefersDark().matches
 }
 
-const changedSpecFilter = (tab: Tab, enabled: boolean, paths: Set<string>) => (tab === 'specs' && enabled ? paths : undefined)
+const changedSpecFilter = (tab: Tab, enabled: boolean, paths: Set<string> | null) => (tab === 'specs' && enabled && paths ? paths : undefined)
 
 const matchingDocuments = (nodes: DocNode[], needle: string, paths?: Set<string>): DocNode[] =>
   nodes.flatMap((node) => [
@@ -318,7 +318,7 @@ const DocumentPane = ({
 export const App = () => {
   const [url, setUrl] = useUrlState()
   const [query, setQuery] = useState('')
-  const [changedOnly, setChangedOnly] = useState(false)
+  const changedOnly = url.diff === 'true'
   const projects = useProjects()
   const [project] = projects
   const worktree = project?.worktrees.find((item) => item.path === url.wt)
@@ -345,7 +345,7 @@ export const App = () => {
   const openPlan = (path: string) => setUrl({ doc: path })
   const listed = tab === 'specs' ? docs.specs : docs.plans
   const needle = query.trim().toLowerCase()
-  const changedSpecs = useMemo(() => new Set(docs.changedSpecs), [docs.changedSpecs])
+  const changedSpecs = useMemo(() => docs.changedSpecs && new Set(docs.changedSpecs), [docs.changedSpecs])
   const changedFilter = changedSpecFilter(tab, changedOnly, changedSpecs)
   const filtering = Boolean(needle || changedFilter)
   const filtered = useMemo(() => matchingDocuments(listed, needle, changedFilter), [listed, needle, changedFilter])
@@ -377,7 +377,7 @@ export const App = () => {
             aria-label="Show only specs changed from remote main"
             aria-pressed={changedOnly}
             title="Show only specs changed from remote main"
-            onClick={() => setChangedOnly((value) => !value)}
+            onClick={() => setUrl({ diff: changedOnly ? undefined : 'true' })}
             className={cn(
               'h-8 rounded-md border px-2 font-mono text-[11px] font-medium disabled:cursor-not-allowed disabled:opacity-50',
               changedOnly ? 'border-accent bg-accent-soft text-accent' : 'bg-elevated text-muted'

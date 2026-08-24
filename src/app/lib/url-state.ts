@@ -6,9 +6,10 @@ interface UrlState {
   wt?: string
   tab?: Tab
   doc?: string
+  diff?: 'true'
 }
 
-const KEYS = ['wt', 'tab', 'doc'] as const
+const KEYS = ['wt', 'tab', 'doc', 'diff'] as const
 
 const read = (): UrlState => {
   const params = new URLSearchParams(location.search)
@@ -23,6 +24,9 @@ const read = (): UrlState => {
     }
     if (value && key === 'doc') {
       state.doc = value
+    }
+    if (value === 'true' && key === 'diff') {
+      state.diff = value
     }
   }
   return state
