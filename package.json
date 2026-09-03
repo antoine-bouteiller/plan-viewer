@@ -39,7 +39,7 @@
     "@types/proper-lockfile": "4.1.4",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",
-    "knip": "6.32.3",
+    "knip": "6.34.0",
     "lefthook": "2.1.12",
     "mdast-util-mdx-expression": "^2.0.1",
     "mdast-util-mdx-jsx": "^3.2.0",
