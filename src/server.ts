@@ -64,6 +64,8 @@ const PORT = portValue === undefined ? 0 : Number(portValue)
 if (!Number.isInteger(PORT) || PORT < 0 || PORT > 65_535) {
   fail(`invalid port: ${portValue ?? ''}`)
 }
+// Non-loopback hosts expose unauthenticated file reads to the network; opt-in only.
+const HOSTNAME = process.env.PLAN_VIEWER_BIND || '127.0.0.1'
 const MERMAID_DIR = dirname(Bun.resolveSync('mermaid/package.json', import.meta.dir))
 const label = (name: string) => name.replace(/\.md$/, '')
 const unquote = (value: string) =>
@@ -558,7 +560,7 @@ const serve = (port: number) =>
 
       return new Response('not found', { status: 404 })
     },
-    hostname: '127.0.0.1',
+    hostname: HOSTNAME,
     // /api/events is a long-lived SSE stream with no traffic between file changes.
     idleTimeout: 0,
     port,
