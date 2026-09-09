@@ -69,6 +69,11 @@ if (!Number.isInteger(PORT) || PORT < 0 || PORT > 65_535) {
 // A hostname often resolves to 127.0.1.1 via /etc/hosts, so bind all interfaces instead.
 const BIND = process.env.PLAN_VIEWER_BIND || '127.0.0.1'
 const HOSTNAME = isIP(BIND) ? BIND : '0.0.0.0'
+const { PLAN_VIEWER_CERT, PLAN_VIEWER_KEY } = process.env
+if (Boolean(PLAN_VIEWER_CERT) !== Boolean(PLAN_VIEWER_KEY)) {
+  fail('PLAN_VIEWER_CERT and PLAN_VIEWER_KEY must be set together')
+}
+const TLS = PLAN_VIEWER_CERT && PLAN_VIEWER_KEY ? { cert: Bun.file(PLAN_VIEWER_CERT), key: Bun.file(PLAN_VIEWER_KEY) } : undefined
 const MERMAID_DIR = dirname(Bun.resolveSync('mermaid/package.json', import.meta.dir))
 const label = (name: string) => name.replace(/\.md$/, '')
 const unquote = (value: string) =>
@@ -568,6 +573,7 @@ const serve = (port: number) =>
     idleTimeout: 0,
     port,
     routes: { '/': index },
+    tls: TLS,
   })
 
 const server = (() => {

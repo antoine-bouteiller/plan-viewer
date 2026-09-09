@@ -16,7 +16,8 @@ The server prints its loopback URL. To choose a port, pass `--port <number>` aft
 otherwise the OS chooses an available port. Set `PLAN_VIEWER_BIND=<ip-or-host>` to bind to
 another address (e.g. the VM IP from `SSH_CONNECTION`); a hostname binds all interfaces
 (`0.0.0.0`), since it usually resolves to loopback via `/etc/hosts`. The server has no
-authentication, so only do this on a trusted network.
+authentication, so only do this on a trusted network. Set `PLAN_VIEWER_CERT` and
+`PLAN_VIEWER_KEY` to PEM file paths to serve over HTTPS.
 
 Use any checkout or worktree as the root. The viewer discovers that Git project's worktrees and
 provides a picker between them; it does not discover unrelated repositories. Plans are read from
