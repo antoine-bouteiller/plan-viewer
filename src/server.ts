@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync, watch } from 'node:fs'
+import { isIP } from 'node:net'
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 
 import { buildTree, type DocMeta, type DocNode } from './corpus/tree.ts'
@@ -65,7 +66,9 @@ if (!Number.isInteger(PORT) || PORT < 0 || PORT > 65_535) {
   fail(`invalid port: ${portValue ?? ''}`)
 }
 // Non-loopback hosts expose unauthenticated file reads to the network; opt-in only.
-const HOSTNAME = process.env.PLAN_VIEWER_BIND || '127.0.0.1'
+// A hostname often resolves to 127.0.1.1 via /etc/hosts, so bind all interfaces instead.
+const BIND = process.env.PLAN_VIEWER_BIND || '127.0.0.1'
+const HOSTNAME = isIP(BIND) ? BIND : '0.0.0.0'
 const MERMAID_DIR = dirname(Bun.resolveSync('mermaid/package.json', import.meta.dir))
 const label = (name: string) => name.replace(/\.md$/, '')
 const unquote = (value: string) =>
