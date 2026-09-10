@@ -76,6 +76,7 @@ test(
     const earlyExitPidPath = join(directory, 'early-exit.pid')
     const timeoutPidPath = join(directory, 'timeout.pid')
     const previousConfig = process.env.PLAN_VIEWER_CONFIG
+    const previousNodeEnv = process.env.NODE_ENV
     const previousPath = process.env.PATH
     const previousServerEntry = process.env.PLAN_VIEWER_SERVER_ENTRY
     const viewers: Viewer[] = []
@@ -88,6 +89,7 @@ test(
     let helper: Bun.Subprocess | undefined
 
     process.env.PLAN_VIEWER_CONFIG = config
+    process.env.NODE_ENV = 'development'
     delete process.env.PLAN_VIEWER_SERVER_ENTRY
     try {
       await Promise.all([mkdir(root), mkdir(earlyExitRoot), mkdir(timeoutRoot), mkdir(pathlessRoot)])
@@ -108,6 +110,10 @@ test(
       const first = await acquire(relative(process.cwd(), root), process.pid)
       viewers.push(first)
       expect(first.created).toBe(true)
+      const pageResponse = await fetch(first.url, { headers: { host: 'plan-viewer.example.test' } })
+      expect(pageResponse.status).toBe(200)
+      expect(await pageResponse.text()).not.toContain('/_bun/client/')
+      expect(process.env.NODE_ENV).toBe('development')
       const projectsResponse = await fetch(`${first.url}/api/projects`)
       expect(projectsResponse.status).toBe(200)
       expect((await projectsResponse.json()).projects[0].worktrees).toHaveLength(2)
@@ -246,6 +252,11 @@ test(
             delete process.env.PATH
           } else {
             process.env.PATH = previousPath
+          }
+          if (previousNodeEnv === undefined) {
+            delete process.env.NODE_ENV
+          } else {
+            process.env.NODE_ENV = previousNodeEnv
           }
           if (previousServerEntry === undefined) {
             delete process.env.PLAN_VIEWER_SERVER_ENTRY

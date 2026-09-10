@@ -105,7 +105,7 @@ const spawnCreator = async (root: string, serverRoot: string, holder: number, po
     }
     const spawned = Bun.spawn(command, {
       cwd: packageRoot,
-      env: { ...process.env, PLAN_VIEWER_MANAGED: '1' },
+      env: { ...process.env, NODE_ENV: 'production', PLAN_VIEWER_MANAGED: '1' },
       stderr: 'pipe',
       stdout: 'pipe',
     })
