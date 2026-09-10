@@ -98,6 +98,7 @@ const useDocs = (wtPath: string | undefined, reloads: number) => {
     return () => {
       alive = false
     }
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- reloads intentionally triggers a refetch.
   }, [wtPath, reloads])
 
   return { docs: current?.docs ?? NO_DOCS, error: current?.error ?? null }
@@ -135,6 +136,7 @@ const useDoc = (wtPath: string | undefined, active: string | null, reloads: numb
     return () => {
       alive = false
     }
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- reloads intentionally triggers a refetch.
   }, [wtPath, active, key, reloads])
 
   return {
