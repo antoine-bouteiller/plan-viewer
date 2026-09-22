@@ -32,7 +32,7 @@
   "devDependencies": {
     "@commitlint/cli": "21.2.3",
     "@commitlint/config-conventional": "21.2.3",
-    "@earendil-works/pi-coding-agent": "0.86.1",
+    "@earendil-works/pi-coding-agent": "0.87.0",
     "@types/bun": "1.4.2",
     "@types/hast": "^3.0.5",
     "@types/mdast": "^4.0.4",
@@ -48,7 +48,7 @@
     "oxlint-tsgolint": "7.0.2002"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "0.86.1"
+    "@earendil-works/pi-coding-agent": "0.87.0"
   },
   "commitlint": {
     "extends": [
