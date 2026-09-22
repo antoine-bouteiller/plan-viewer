@@ -247,7 +247,25 @@ const DocumentPane = ({
         if (!alive) {
           return
         }
-        mermaid.initialize({ startOnLoad: false, theme: dark ? 'dark' : 'default' })
+        const styles = getComputedStyle(document.documentElement)
+        const color = (name: string) => styles.getPropertyValue(name).trim()
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: 'base',
+          themeVariables: {
+            background: color('--bg'),
+            darkMode: dark,
+            lineColor: color('--muted'),
+            primaryBorderColor: color('--accent'),
+            primaryColor: color('--bg-elevated'),
+            primaryTextColor: color('--fg'),
+            secondaryColor: color('--bg-hover'),
+            secondaryTextColor: color('--fg'),
+            tertiaryColor: color('--code-bg'),
+            tertiaryTextColor: color('--fg'),
+            textColor: color('--fg'),
+          },
+        })
         // Diagrams render one at a time: a concurrent run lets a failing diagram's error output land in another's container.
         await diagrams.reduce(
           (chain: Promise<void>, diagram) =>

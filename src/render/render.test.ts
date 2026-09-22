@@ -73,11 +73,15 @@ describe('renderDoc', () => {
   })
 
   test('syntax highlights TypeScript fences with both themes', () => {
-    const { html } = render('```ts\nconst answer: number = 42\n```')
+    const { html } = render('```ts\n// Answer\nconst answer: number = 42\n```')
 
     expect(html).toContain('class="shiki')
-    expect(html).toContain('background-color:')
-    expect(html).toContain('--shiki-dark')
+    expect(html).toContain('background-color:var(--code-bg)')
+    expect(html).toContain('--shiki-dark-bg:var(--code-bg)')
+    expect(html).toContain('color:var(--accent)')
+    expect(html).toContain('--shiki-dark:var(--accent)')
+    expect(html).toContain('color:var(--muted)')
+    expect(html).toContain('--shiki-dark:var(--muted)')
   })
 
   test('renders Mermaid fences as client-renderable placeholders', () => {
