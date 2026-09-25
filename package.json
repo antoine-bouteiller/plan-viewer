@@ -43,9 +43,9 @@
     "lefthook": "2.1.14",
     "mdast-util-mdx-expression": "^2.0.1",
     "mdast-util-mdx-jsx": "^3.2.0",
-    "oxfmt": "0.68.0",
-    "oxlint": "1.83.0",
-    "oxlint-tsgolint": "7.0.2002"
+    "oxfmt": "0.70.0",
+    "oxlint": "1.85.0",
+    "oxlint-tsgolint": "7.0.2003"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "0.87.1"
